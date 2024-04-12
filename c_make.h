@@ -1854,7 +1854,9 @@ int main(int argument_count, char **arguments)
     const char *c_make_source_file = "c_make.c";
 #endif
 
-    if (c_make_needs_rebuild_single_source(c_make_executable_file, c_make_source_file))
+    const char *c_make_source_files[] = { c_make_source_file, __FILE__ };
+
+    if (c_make_needs_rebuild(c_make_executable_file, CMakeArrayCount(c_make_source_files), c_make_source_files))
     {
         size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
 
