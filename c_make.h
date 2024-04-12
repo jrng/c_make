@@ -7,7 +7,6 @@
 // - improve c_make_command_to_string()
 // - improve c_make_command_append_command_line()
 // - support comments in config file
-// - remove c_make.orig
 // - parse bootstrapping compiler flags from first line of c_make.c(pp)
 
 #ifndef __C_MAKE_INCLUDE__
@@ -325,6 +324,7 @@ C_MAKE_DEF bool c_make_create_directory(const char *directory_name);
 C_MAKE_DEF bool c_make_read_entire_file(const char *file_name, CMakeString *content);
 C_MAKE_DEF bool c_make_write_entire_file(const char *file_name, CMakeString content);
 C_MAKE_DEF bool c_make_rename_file(const char *old_file_name, const char *new_file_name);
+C_MAKE_DEF bool c_make_delete_file(const char *file_name);
 
 C_MAKE_DEF bool c_make_has_slash_or_backslash(const char *path);
 C_MAKE_DEF const char *c_make_find_program(const char *program_name);
@@ -1435,6 +1435,39 @@ c_make_rename_file(const char *old_file_name, const char *new_file_name)
 }
 
 C_MAKE_DEF bool
+c_make_delete_file(const char *file_name)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+    LPWSTR utf16_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+
+    bool result = DeleteFile(utf16_file_name) ? true : false;
+
+    if (!result && (GetLastError() == ERROR_FILE_NOT_FOUND))
+    {
+        result = true;
+    }
+
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
+    return result;
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    if (unlink(file_name))
+    {
+        if (errno == ENOENT)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    return true;
+#endif
+}
+
+C_MAKE_DEF bool
 c_make_has_slash_or_backslash(const char *path)
 {
     if (path)
@@ -1875,6 +1908,14 @@ int main(int argument_count, char **arguments)
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
 
         return 0;
+    }
+    else
+    {
+        size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+        c_make_delete_file(c_make_c_string_concat(c_make_executable_file, ".orig"));
+
+        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
     }
 
     _c_make_context.target_platform = c_make_get_host_platform();
