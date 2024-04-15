@@ -60,7 +60,7 @@ int main(int argument_count, char **arguments)
                     c_make_command_append(&command, "-o", c_make_executable_file, c_make_source_file);
                 }
 
-                fprintf(stderr, "-- bootstrap c_make from %s\n", c_make_source_file);
+                c_make_log(CMakeLogLevelInfo, "bootstrap c_make from %s\n", c_make_source_file);
 
                 if (c_make_command_run_and_wait(command))
                 {
@@ -68,9 +68,8 @@ int main(int argument_count, char **arguments)
                 }
                 else
                 {
-                    fprintf(stderr, "-- bootstrapping did not work. Maybe try setting the c_make include path.\n");
-                    fprintf(stderr, "   C_MAKE_INCLUDE_PATH = ");
-                    fflush(stderr);
+                    c_make_log(CMakeLogLevelError, "bootstrapping did not work. Maybe try setting the c_make include path.\n"
+                                                   "          C_MAKE_INCLUDE_PATH = ");
 
                     c_make_include_path = c_make_allocate(200);
                     c_make_include_path = fgets(c_make_include_path, 200, stdin);
@@ -92,8 +91,8 @@ int main(int argument_count, char **arguments)
             }
             else
             {
-                fprintf(stderr, "error: this project does not use c_make.\n");
-                fprintf(stderr, "       please provide a c_make.c or c_make.cpp file.\n");
+                c_make_log(CMakeLogLevelError, "this project does not use c_make.\n");
+                c_make_log(CMakeLogLevelRaw, "please provide a c_make.c or c_make.cpp file.\n");
                 return 0;
             }
         }

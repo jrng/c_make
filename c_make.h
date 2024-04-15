@@ -124,6 +124,14 @@ extern "C" {
 #  include <stdbool.h>
 #endif
 
+typedef enum CMakeLogLevel
+{
+    CMakeLogLevelRaw     = 0,
+    CMakeLogLevelInfo    = 1,
+    CMakeLogLevelWarning = 2,
+    CMakeLogLevelError   = 3,
+} CMakeLogLevel;
+
 typedef enum CMakePlatform
 {
     CMakePlatformAndroid = 0,
@@ -157,6 +165,9 @@ typedef struct CMakeString
     size_t count;
     char *data;
 } CMakeString;
+
+#define CMakeStringFmt ".*s"
+#define CMakeStringArg(str) (int) (str).count, (str).data
 
 typedef struct CMakeCommand
 {
@@ -198,6 +209,26 @@ typedef struct CMakeContext
     CMakeConfig config;
     CMakeMemory private_memory;
     CMakeMemory public_memory;
+
+    bool shell_initialized;
+
+    char *reset;
+    char *color_black;
+    char *color_red;
+    char *color_green;
+    char *color_yellow;
+    char *color_blue;
+    char *color_magenta;
+    char *color_cyan;
+    char *color_white;
+    char *color_bright_black;
+    char *color_bright_red;
+    char *color_bright_green;
+    char *color_bright_yellow;
+    char *color_bright_blue;
+    char *color_bright_magenta;
+    char *color_bright_cyan;
+    char *color_bright_white;
 } CMakeContext;
 
 static inline CMakeString
@@ -276,6 +307,8 @@ c_make_compiler_is_msvc(const char *compiler)
 {
     return (compiler && (compiler[0] == 'c') && (compiler[1] == 'l') && (compiler[2] == 0)) ? true : false;
 }
+
+C_MAKE_DEF void c_make_log(CMakeLogLevel log_level, const char *format, ...);
 
 C_MAKE_DEF void *c_make_memory_allocate(CMakeMemory *memory, size_t size);
 C_MAKE_DEF void *c_make_memory_reallocate(CMakeMemory *memory, void *old_ptr, size_t old_size, size_t new_size);
@@ -386,6 +419,89 @@ c_make_utf8_to_utf16(CMakeMemory *memory, const char *utf8_str)
 }
 
 #endif
+
+C_MAKE_DEF void
+c_make_log(CMakeLogLevel log_level, const char *format, ...)
+{
+    if (!_c_make_context.shell_initialized)
+    {
+        if (isatty(fileno(stderr)))
+        {
+            _c_make_context.reset                = "\x1b[0m";
+            _c_make_context.color_black          = "\x1b[30m";
+            _c_make_context.color_red            = "\x1b[31m";
+            _c_make_context.color_green          = "\x1b[32m";
+            _c_make_context.color_yellow         = "\x1b[33m";
+            _c_make_context.color_blue           = "\x1b[34m";
+            _c_make_context.color_magenta        = "\x1b[35m";
+            _c_make_context.color_cyan           = "\x1b[36m";
+            _c_make_context.color_white          = "\x1b[37m";
+            _c_make_context.color_bright_black   = "\x1b[1;30m";
+            _c_make_context.color_bright_red     = "\x1b[1;31m";
+            _c_make_context.color_bright_green   = "\x1b[1;32m";
+            _c_make_context.color_bright_yellow  = "\x1b[1;33m";
+            _c_make_context.color_bright_blue    = "\x1b[1;34m";
+            _c_make_context.color_bright_magenta = "\x1b[1;35m";
+            _c_make_context.color_bright_cyan    = "\x1b[1;36m";
+            _c_make_context.color_bright_white   = "\x1b[1;37m";
+        }
+        else
+        {
+            _c_make_context.reset                = "";
+            _c_make_context.color_black          = "";
+            _c_make_context.color_red            = "";
+            _c_make_context.color_green          = "";
+            _c_make_context.color_yellow         = "";
+            _c_make_context.color_blue           = "";
+            _c_make_context.color_magenta        = "";
+            _c_make_context.color_cyan           = "";
+            _c_make_context.color_white          = "";
+            _c_make_context.color_bright_black   = "";
+            _c_make_context.color_bright_red     = "";
+            _c_make_context.color_bright_green   = "";
+            _c_make_context.color_bright_yellow  = "";
+            _c_make_context.color_bright_blue    = "";
+            _c_make_context.color_bright_magenta = "";
+            _c_make_context.color_bright_cyan    = "";
+            _c_make_context.color_bright_white   = "";
+        }
+
+        _c_make_context.shell_initialized = true;
+    }
+
+    switch (log_level)
+    {
+        case CMakeLogLevelRaw:
+        {
+        } break;
+
+        case CMakeLogLevelInfo:
+        {
+            fprintf(stderr, "%s-- ", _c_make_context.color_bright_white);
+        } break;
+
+        case CMakeLogLevelWarning:
+        {
+            fprintf(stderr, "%s-- %swarning: ",
+                    _c_make_context.color_bright_white,
+                    _c_make_context.color_bright_yellow);
+        } break;
+
+        case CMakeLogLevelError:
+        {
+            fprintf(stderr, "%s-- %serror: ",
+                    _c_make_context.color_bright_white,
+                    _c_make_context.color_bright_red);
+        } break;
+    }
+
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    fprintf(stderr, "%s", _c_make_context.reset);
+    fflush(stderr);
+    va_end(args);
+}
 
 C_MAKE_DEF void *
 c_make_memory_allocate(CMakeMemory *memory, size_t size)
@@ -984,8 +1100,8 @@ c_make_print_config(void)
     for (size_t i = 0; i < _c_make_context.config.count; i += 1)
     {
         CMakeConfigEntry *entry = _c_make_context.config.items + i;
-        fprintf(stderr, "  + %.*s = \"%.*s\"\n", (int) entry->key.count, entry->key.data,
-                (int) entry->value.count, entry->value.data);
+        c_make_log(CMakeLogLevelRaw, "  + %" CMakeStringFmt " = \"%" CMakeStringFmt "\"\n",
+                   CMakeStringArg(entry->key), CMakeStringArg(entry->value));
     }
 }
 
@@ -1008,7 +1124,7 @@ c_make_store_config(const char *file_name)
 
     if (!c_make_write_entire_file(file_name, config_string))
     {
-        fprintf(stderr, "error: could not write config file '%s'\n", file_name);
+        c_make_log(CMakeLogLevelError, "could not write config file '%s'\n", file_name);
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
         return false;
     }
@@ -1025,7 +1141,7 @@ c_make_load_config(const char *file_name)
 
     if (!c_make_read_entire_file(file_name, &config_string))
     {
-        fprintf(stderr, "error: could not read config file '%s'\n", file_name);
+        c_make_log(CMakeLogLevelError, "could not read config file '%s'\n", file_name);
         return false;
     }
 
@@ -1650,7 +1766,7 @@ c_make_command_run(CMakeCommand command)
         size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
 
         CMakeString command_string = c_make_command_to_string(command);
-        fprintf(stderr, "%.*s\n", (int) command_string.count, command_string.data);
+        c_make_log(CMakeLogLevelRaw, "%" CMakeStringFmt "\n", CMakeStringArg(command_string));
 
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
     }
@@ -1893,7 +2009,7 @@ int main(int argument_count, char **arguments)
             c_make_command_append(&command, "-o", c_make_executable_file, c_make_source_file);
         }
 
-        fprintf(stderr, "-- rebuild c_make\n");
+        c_make_log(CMakeLogLevelInfo, "rebuild c_make\n");
 
         if (!c_make_command_run_and_wait(command))
         {
@@ -1930,7 +2046,7 @@ int main(int argument_count, char **arguments)
 
         if (c_make_file_exists(config_file_name))
         {
-            fprintf(stderr, "error: there is already a directory called '%s'\n", build_directory);
+            c_make_log(CMakeLogLevelError, "there is already a directory called '%s'\n", build_directory);
             return -1;
         }
 
@@ -2065,7 +2181,7 @@ int main(int argument_count, char **arguments)
             }
         }
 
-        fprintf(stderr, "-- store config:\n");
+        c_make_log(CMakeLogLevelInfo, "store config:\n");
         c_make_print_config();
 
         if (!c_make_store_config(config_file_name))
@@ -2077,13 +2193,13 @@ int main(int argument_count, char **arguments)
     {
         if (!c_make_directory_exists(build_directory))
         {
-            fprintf(stderr, "error: there is no build directory called '%s'\n", build_directory);
+            c_make_log(CMakeLogLevelError, "there is no build directory called '%s'\n", build_directory);
             return -1;
         }
 
         if (!c_make_file_exists(config_file_name))
         {
-            fprintf(stderr, "error: the build directory '%s' was never setup\n", build_directory);
+            c_make_log(CMakeLogLevelError, "the build directory '%s' was never setup\n", build_directory);
             return -1;
         }
 
@@ -2094,7 +2210,7 @@ int main(int argument_count, char **arguments)
 
         if (_c_make_context.verbose)
         {
-            fprintf(stderr, "-- load config:\n");
+            c_make_log(CMakeLogLevelInfo, "load config:\n");
             c_make_print_config();
         }
 

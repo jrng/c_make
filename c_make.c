@@ -28,7 +28,6 @@ C_MAKE_BUILD_ENTRY()
         c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "c_make_wrapper.c"));
     }
 
-    fprintf(stderr, "-- compile 'c_make_wrapper'\n");
-
+    c_make_log(CMakeLogLevelInfo, "compile 'c_make_wrapper'\n");
     c_make_command_run_and_wait(command);
 }
