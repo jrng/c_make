@@ -212,23 +212,23 @@ typedef struct CMakeContext
 
     bool shell_initialized;
 
-    char *reset;
-    char *color_black;
-    char *color_red;
-    char *color_green;
-    char *color_yellow;
-    char *color_blue;
-    char *color_magenta;
-    char *color_cyan;
-    char *color_white;
-    char *color_bright_black;
-    char *color_bright_red;
-    char *color_bright_green;
-    char *color_bright_yellow;
-    char *color_bright_blue;
-    char *color_bright_magenta;
-    char *color_bright_cyan;
-    char *color_bright_white;
+    const char *reset;
+    const char *color_black;
+    const char *color_red;
+    const char *color_green;
+    const char *color_yellow;
+    const char *color_blue;
+    const char *color_magenta;
+    const char *color_cyan;
+    const char *color_white;
+    const char *color_bright_black;
+    const char *color_bright_red;
+    const char *color_bright_green;
+    const char *color_bright_yellow;
+    const char *color_bright_blue;
+    const char *color_bright_magenta;
+    const char *color_bright_cyan;
+    const char *color_bright_white;
 } CMakeContext;
 
 static inline CMakeString
@@ -370,6 +370,29 @@ C_MAKE_DEF char *c_make_c_string_path_concat_va(size_t count, ...);
 C_MAKE_DEF CMakeProcessId c_make_command_run(CMakeCommand command);
 C_MAKE_DEF bool c_make_process_wait(CMakeProcessId process_id);
 C_MAKE_DEF bool c_make_command_run_and_wait(CMakeCommand command);
+
+static inline bool
+c_make_config_is_enabled(const char *key, bool fallback)
+{
+    bool result = fallback;
+    CMakeConfigValue config_value = c_make_config_get(key);
+
+    if (config_value.is_valid)
+    {
+        const char *val = config_value.val;
+
+        if (val && (val[0] == 'o') && (val[1] == 'n') && (val[2] == 0))
+        {
+            result = true;
+        }
+        else
+        {
+            result = false;
+        }
+    }
+
+    return result;
+}
 
 #ifdef __cplusplus
 }
