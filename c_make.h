@@ -448,7 +448,16 @@ c_make_log(CMakeLogLevel log_level, const char *format, ...)
 {
     if (!_c_make_context.shell_initialized)
     {
+#if C_MAKE_PLATFORM_WINDOWS
+        HANDLE std_error = GetStdHandle(STD_ERROR_HANDLE);
+        DWORD mode = 0;
+
+        if (GetConsoleMode(std_error, &mode) && SetConsoleMode(std_error, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING ))
+#else
+        int fileno(FILE *);
+
         if (isatty(fileno(stderr)))
+#endif
         {
             _c_make_context.reset                = "\x1b[0m";
             _c_make_context.color_black          = "\x1b[30m";
