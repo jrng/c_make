@@ -16,6 +16,7 @@
 #define C_MAKE_PLATFORM_WINDOWS 0
 #define C_MAKE_PLATFORM_LINUX   0
 #define C_MAKE_PLATFORM_MACOS   0
+#define C_MAKE_PLATFORM_WEB     0
 
 #if defined(__ANDROID__)
 #  undef C_MAKE_PLATFORM_ANDROID
@@ -29,10 +30,14 @@
 #elif defined(__APPLE__) && defined(__MACH__)
 #  undef C_MAKE_PLATFORM_MACOS
 #  define C_MAKE_PLATFORM_MACOS 1
+#elif defined(__wasm__)
+#  undef C_MAKE_PLATFORM_WEB
+#  define C_MAKE_PLATFORM_WEB 1
 #endif
 
 #define C_MAKE_ARCHITECTURE_AMD64   0
 #define C_MAKE_ARCHITECTURE_AARCH64 0
+#define C_MAKE_ARCHITECTURE_WASM32  0
 
 #if C_MAKE_PLATFORM_WINDOWS
 #  if defined(__MINGW32__)
@@ -56,6 +61,11 @@
 #  elif defined(__aarch64__)
 #    undef C_MAKE_ARCHITECTURE_AARCH64
 #    define C_MAKE_ARCHITECTURE_AARCH64 1
+#  endif
+#elif C_MAKE_PLATFORM_WEB
+#  if defined(__wasm__)
+#    undef C_MAKE_ARCHITECTURE_WASM32
+#    define C_MAKE_ARCHITECTURE_WASM32
 #  endif
 #endif
 
@@ -138,12 +148,14 @@ typedef enum CMakePlatform
     CMakePlatformWindows = 1,
     CMakePlatformLinux   = 2,
     CMakePlatformMacOs   = 3,
+    CMakePlatformWeb     = 4,
 } CMakePlatform;
 
 typedef enum CMakeArchitecture
 {
     CMakeArchitectureAmd64   = 0,
     CMakeArchitectureAarch64 = 1,
+    CMakeArchitectureWasm32  = 2,
 } CMakeArchitecture;
 
 typedef enum CMakeBuildType
@@ -259,6 +271,8 @@ c_make_get_host_platform(void)
     return CMakePlatformLinux;
 #elif C_MAKE_PLATFORM_MACOS
     return CMakePlatformMacOs;
+#elif C_MAKE_PLATFORM_WEB
+    return CMakePlatformWeb;
 #endif
 }
 
@@ -269,6 +283,8 @@ c_make_get_host_architecture(void)
     return CMakeArchitectureAmd64;
 #elif C_MAKE_ARCHITECTURE_AARCH64
     return CMakeArchitectureAarch64;
+#elif C_MAKE_ARCHITECTURE_WASM32
+    return CMakeArchitectureWasm32;
 #endif
 }
 
@@ -283,6 +299,7 @@ c_make_get_platform_name(CMakePlatform platform)
         case CMakePlatformWindows: name = "windows"; break;
         case CMakePlatformLinux:   name = "linux";   break;
         case CMakePlatformMacOs:   name = "macos";   break;
+        case CMakePlatformWeb:     name = "web";     break;
     }
 
     return name;
@@ -297,6 +314,7 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
     {
         case CMakeArchitectureAmd64:   name = "amd64";   break;
         case CMakeArchitectureAarch64: name = "aarch64"; break;
+        case CMakeArchitectureWasm32:  name = "wasm32";  break;
     }
 
     return name;
@@ -902,6 +920,8 @@ c_make_get_host_c_compiler(void)
         result = "clang";
 #elif C_MAKE_PLATFORM_MACOS
         result = "clang";
+#elif C_MAKE_PLATFORM_WEB
+        result = "clang";
 #endif
     }
 
@@ -971,6 +991,8 @@ c_make_get_host_cpp_compiler(void)
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
         result = "clang++";
 #elif C_MAKE_PLATFORM_MACOS
+        result = "clang++";
+#elif C_MAKE_PLATFORM_WEB
         result = "clang++";
 #endif
     }
@@ -1076,6 +1098,10 @@ c_make_config_set(const char *_key, const char *value)
         {
             _c_make_context.target_platform = CMakePlatformMacOs;
         }
+        else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("web")))
+        {
+            _c_make_context.target_platform = CMakePlatformWeb;
+        }
     }
     else if (c_make_strings_are_equal(entry->key, CMakeStringLiteral("target_architecture")))
     {
@@ -1086,6 +1112,10 @@ c_make_config_set(const char *_key, const char *value)
         else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("aarch64")))
         {
             _c_make_context.target_architecture = CMakeArchitectureAarch64;
+        }
+        else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("wasm32")))
+        {
+            _c_make_context.target_architecture = CMakeArchitectureWasm32;
         }
     }
     else if (c_make_strings_are_equal(entry->key, CMakeStringLiteral("build_type")))
