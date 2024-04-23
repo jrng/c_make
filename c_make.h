@@ -917,7 +917,7 @@ c_make_get_host_c_compiler(void)
         result = "cl";
 #  endif
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
-        result = "clang";
+        result = "cc";
 #elif C_MAKE_PLATFORM_MACOS
         result = "clang";
 #elif C_MAKE_PLATFORM_WEB
@@ -989,7 +989,7 @@ c_make_get_host_cpp_compiler(void)
         result = "cl";
 #  endif
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
-        result = "clang++";
+        result = "c++";
 #elif C_MAKE_PLATFORM_MACOS
         result = "clang++";
 #elif C_MAKE_PLATFORM_WEB
