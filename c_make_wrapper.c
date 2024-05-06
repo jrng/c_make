@@ -4,6 +4,16 @@
 
 int main(int argument_count, char **arguments)
 {
+    for (int i = 3; i < argument_count; i += 1)
+    {
+        CMakeString argument = CMakeCString(arguments[i]);
+
+        if (c_make_strings_are_equal(argument, CMakeStringLiteral("--verbose")))
+        {
+            _c_make_context.verbose = true;
+        }
+    }
+
 #if C_MAKE_PLATFORM_WINDOWS
     const char *c_make_executable_file = "c_make.exe";
 #else
@@ -48,7 +58,46 @@ int main(int argument_count, char **arguments)
                     c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_INCLUDE_PATH=", c_make_include_path));
                 }
 
-                // TODO: parse bootstrapping flags from c_make.cpp
+                size_t memory_saved = c_make_memory_save();
+
+                CMakeString source_content = { 0 };
+
+                if (c_make_read_entire_file(c_make_source_file, &source_content))
+                {
+                    CMakeString first_line = c_make_string_split_left(&source_content, '\n');
+                    size_t index = c_make_string_find(first_line, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS"));
+
+                    if (index < first_line.count)
+                    {
+                        CMakeString argument;
+                        argument.count = first_line.count - index;
+                        argument.data  = first_line.data + index;
+
+                        CMakeString key = c_make_string_trim(c_make_string_split_left(&argument, '='));
+                        CMakeString compiler_flags = c_make_string_trim(argument);
+
+                        if (c_make_strings_are_equal(key, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS")))
+                        {
+                            if ((compiler_flags.count > 0) && (compiler_flags.data[0] == '"'))
+                            {
+                                compiler_flags.count -= 1;
+                                compiler_flags.data += 1;
+                            }
+
+                            if ((compiler_flags.count > 0) && (compiler_flags.data[compiler_flags.count - 1] == '"'))
+                            {
+                                compiler_flags.count -= 1;
+                            }
+
+                            compiler_flags = c_make_string_trim(compiler_flags);
+
+                            c_make_command_append_command_line(&command, c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags));
+                            c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags)));
+                        }
+                    }
+                }
+
+                c_make_memory_restore(memory_saved);
 
                 if (c_make_compiler_is_msvc(compiler))
                 {

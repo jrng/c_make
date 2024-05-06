@@ -7,7 +7,6 @@
 // - improve c_make_command_to_string()
 // - improve c_make_command_append_command_line()
 // - support comments in config file
-// - parse bootstrapping compiler flags from first line of c_make.c(pp)
 
 #ifndef __C_MAKE_INCLUDE__
 #define __C_MAKE_INCLUDE__
@@ -346,6 +345,7 @@ C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
 C_MAKE_DEF CMakeString c_make_copy_string(CMakeMemory *memory, CMakeString str);
 C_MAKE_DEF CMakeString c_make_string_split_left(CMakeString *str, char c);
 C_MAKE_DEF CMakeString c_make_string_trim(CMakeString str);
+C_MAKE_DEF size_t c_make_string_find(CMakeString str, CMakeString pattern);
 C_MAKE_DEF char *c_make_string_to_c_string(CMakeMemory *memory, CMakeString str);
 
 C_MAKE_DEF CMakePlatform c_make_get_target_platform(void);
@@ -657,7 +657,7 @@ c_make_command_append_va(CMakeCommand *command, size_t count, ...)
 {
     if ((command->count + count) > command->allocated)
     {
-        int grow = 16;
+        size_t grow = 16;
 
         if (count > grow)
         {
@@ -675,7 +675,7 @@ c_make_command_append_va(CMakeCommand *command, size_t count, ...)
     va_list args;
     va_start(args, count);
 
-    for (int i = 0; i < count; i += 1)
+    for (size_t i = 0; i < count; i += 1)
     {
         command->items[command->count] = va_arg(args, const char *);
         command->count += 1;
@@ -689,7 +689,7 @@ c_make_command_append_slice(CMakeCommand *command, size_t count, const char **it
 {
     if ((command->count + count) > command->allocated)
     {
-        int grow = 16;
+        size_t grow = 16;
 
         if (count > grow)
         {
@@ -704,7 +704,7 @@ c_make_command_append_slice(CMakeCommand *command, size_t count, const char **it
                                                                   command->allocated * sizeof(const char *));
     }
 
-    for (int i = 0; i < count; i += 1)
+    for (size_t i = 0; i < count; i += 1)
     {
         command->items[command->count] = items[i];
         command->count += 1;
@@ -851,6 +851,33 @@ c_make_string_trim(CMakeString str)
     }
 
     return str;
+}
+
+C_MAKE_DEF size_t
+c_make_string_find(CMakeString str, CMakeString pattern)
+{
+    size_t index = 0;
+
+    for (; index < str.count; index += 1)
+    {
+        CMakeString slice;
+        slice.count = pattern.count;
+        slice.data  = str.data + index;
+
+        size_t max_count = str.count - index;
+
+        if (slice.count > max_count)
+        {
+            slice.count = max_count;
+        }
+
+        if (c_make_strings_are_equal(slice, pattern))
+        {
+            return index;
+        }
+    }
+
+    return index;
 }
 
 C_MAKE_DEF char *
@@ -1177,7 +1204,6 @@ c_make_store_config(const char *file_name)
     for (size_t i = 0; i < _c_make_context.config.count; i += 1)
     {
         CMakeConfigEntry *entry = _c_make_context.config.items + i;
-        CMakeString old_string = config_string;
 
         config_string = c_make_string_concat(config_string, entry->key,
                                              CMakeStringLiteral(" = \""),
