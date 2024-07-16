@@ -50,6 +50,7 @@ You then need to put the resulting executable in some directory, that's in your 
 $ cc -o c_make c_make.c  # only needs to happen once
 $ ./c_make setup build
 $ ./c_make build build
+$ (sudo) ./c_make install build  # or the command below
 $ (sudo) install -m 755 build/c_make /usr/local/bin/c_make
 ```
 
@@ -67,31 +68,43 @@ a `hello_world.c` file looks like this:
 #define C_MAKE_IMPLEMENTATION
 #include "c_make.h" // this depends on where you put the header file
 
-C_MAKE_SETUP_ENTRY()
+C_MAKE_ENTRY()
 {
-}
-
-C_MAKE_BUILD_ENTRY()
-{
-    CMakeCommand command = { 0 };
-
-    const char *target_c_compiler = c_make_get_target_c_compiler();
-
-    c_make_command_append(&command, target_c_compiler);
-    c_make_command_append_command_line(&command, c_make_get_target_c_flags());
-
-    if (c_make_compiler_is_msvc(target_c_compiler))
+    switch (c_make_target)
     {
-        c_make_command_append(&command, "-nologo");
-        c_make_command_append(&command, c_make_c_string_concat("-Fe\"", c_make_c_string_path_concat(c_make_get_build_path(), "hello_world.exe"), "\""));
-        c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
-    }
-    else
-    {
-        c_make_command_append(&command, "-o", c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"));
-        c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
-    }
+        case CMakeTargetSetup:
+        {
+        } break;
 
-    c_make_command_run_and_wait(command);
+        case CMakeTargetBuild:
+        {
+            CMakeCommand command = { 0 };
+
+            const char *target_c_compiler = c_make_get_target_c_compiler();
+
+            c_make_command_append(&command, target_c_compiler);
+            c_make_command_append_command_line(&command, c_make_get_target_c_flags());
+
+            if (c_make_compiler_is_msvc(target_c_compiler))
+            {
+                c_make_command_append(&command, "-nologo");
+                c_make_command_append(&command, c_make_c_string_concat("-Fe\"", c_make_c_string_path_concat(c_make_get_build_path(), "hello_world.exe"), "\""));
+                c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
+            }
+            else
+            {
+                c_make_command_append(&command, "-o", c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"));
+                c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
+            }
+
+            c_make_command_run_and_wait(command);
+        } break;
+
+        case CMakeTargetInstall:
+        {
+            c_make_copy_file(c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"),
+                             c_make_c_string_path_concat(c_make_get_install_prefix(), "bin", "hello_world"));
+        } break;
+    }
 }
 ```
