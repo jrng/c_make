@@ -396,6 +396,15 @@ C_MAKE_DEF CMakeProcessId c_make_command_run(CMakeCommand command);
 C_MAKE_DEF bool c_make_process_wait(CMakeProcessId process_id);
 C_MAKE_DEF bool c_make_command_run_and_wait(CMakeCommand command);
 
+static inline void
+c_make_config_set_if_not_exists(const char *key, const char *value)
+{
+    if (!c_make_config_get(key).is_valid)
+    {
+        c_make_config_set(key, value);
+    }
+}
+
 static inline bool
 c_make_config_is_enabled(const char *key, bool fallback)
 {
@@ -2375,11 +2384,8 @@ int main(int argument_count, char **arguments)
 
         _c_make_entry_(CMakeTargetSetup);
 
-        if (!c_make_config_get("install_prefix").is_valid)
-        {
-            // TODO: set to something different for windows
-            c_make_config_set("install_prefix", "/usr/local");
-        }
+        // TODO: set to something different for windows
+        c_make_config_set_if_not_exists("install_prefix", "/usr/local");
 
         if (c_make_get_host_platform() != c_make_get_target_platform())
         {
