@@ -2291,10 +2291,6 @@ int main(int argument_count, char **arguments)
             return -1;
         }
 
-        c_make_config_set("target_platform", c_make_get_platform_name(c_make_get_host_platform()));
-        c_make_config_set("target_architecture", c_make_get_architecture_name(c_make_get_host_architecture()));
-        c_make_config_set("build_type", "debug");
-
         char *CC = getenv("CC");
 
         if (CC)
@@ -2384,6 +2380,9 @@ int main(int argument_count, char **arguments)
 
         _c_make_entry_(CMakeTargetSetup);
 
+        c_make_config_set_if_not_exists("target_platform", c_make_get_platform_name(c_make_get_host_platform()));
+        c_make_config_set_if_not_exists("target_architecture", c_make_get_architecture_name(c_make_get_host_architecture()));
+        c_make_config_set_if_not_exists("build_type", "debug");
         // TODO: set to something different for windows
         c_make_config_set_if_not_exists("install_prefix", "/usr/local");
 
