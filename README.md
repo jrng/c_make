@@ -22,7 +22,7 @@ by compiling the `c_make.c` or `c_make.cpp` file with the c/c++ compiler of your
 After that you have to setup up a build directory by running `c_make setup <build-dir>`.
 With that you can build the project: `c_make build <build-dir>`.
 
-### Linux, macOS, Android
+### Linux, macOS, Android, FreeBSD
 
 ```shell
 $ cc -o c_make c_make.c  # only needs to happen once
@@ -44,7 +44,7 @@ To help with bootstrapping and building c_make based projects there is a c_make 
 that you can install into your system. It can be build by running `c_make` on this repo.
 You then need to put the resulting executable in some directory, that's in your `$PATH` environment variable.
 
-### Linux, macOS, Android
+### Linux, macOS, Android, FreeBSD
 
 ```shell
 $ cc -o c_make c_make.c  # only needs to happen once

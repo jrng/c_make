@@ -12,6 +12,7 @@
 #define __C_MAKE_INCLUDE__
 
 #define C_MAKE_PLATFORM_ANDROID 0
+#define C_MAKE_PLATFORM_FREEBSD 0
 #define C_MAKE_PLATFORM_WINDOWS 0
 #define C_MAKE_PLATFORM_LINUX   0
 #define C_MAKE_PLATFORM_MACOS   0
@@ -20,6 +21,9 @@
 #if defined(__ANDROID__)
 #  undef C_MAKE_PLATFORM_ANDROID
 #  define C_MAKE_PLATFORM_ANDROID 1
+#elif defined(__FreeBSD__)
+#  undef C_MAKE_PLATFORM_FREEBSD
+#  define C_MAKE_PLATFORM_FREEBSD 1
 #elif defined(_WIN32)
 #  undef C_MAKE_PLATFORM_WINDOWS
 #  define C_MAKE_PLATFORM_WINDOWS 1
@@ -53,7 +57,7 @@
 #      define C_MAKE_ARCHITECTURE_AMD64 1
 #    endif
 #  endif
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
 #  if defined(__x86_64__)
 #    undef C_MAKE_ARCHITECTURE_AMD64
 #    define C_MAKE_ARCHITECTURE_AMD64 1
@@ -105,7 +109,7 @@ typedef HANDLE CMakeProcessId;
 
 #  define CMakeInvalidProcessId INVALID_HANDLE_VALUE
 
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
 
 #  include <sys/wait.h>
 
@@ -149,10 +153,11 @@ typedef enum CMakeLogLevel
 typedef enum CMakePlatform
 {
     CMakePlatformAndroid = 0,
-    CMakePlatformWindows = 1,
-    CMakePlatformLinux   = 2,
-    CMakePlatformMacOs   = 3,
-    CMakePlatformWeb     = 4,
+    CMakePlatformFreeBsd = 1,
+    CMakePlatformWindows = 2,
+    CMakePlatformLinux   = 3,
+    CMakePlatformMacOs   = 4,
+    CMakePlatformWeb     = 5,
 } CMakePlatform;
 
 typedef enum CMakeArchitecture
@@ -269,6 +274,8 @@ c_make_get_host_platform(void)
 {
 #if C_MAKE_PLATFORM_ANDROID
     return CMakePlatformAndroid;
+#elif C_MAKE_PLATFORM_FREEBSD
+    return CMakePlatformFreeBsd;
 #elif C_MAKE_PLATFORM_WINDOWS
     return CMakePlatformWindows;
 #elif C_MAKE_PLATFORM_LINUX
@@ -300,6 +307,7 @@ c_make_get_platform_name(CMakePlatform platform)
     switch (platform)
     {
         case CMakePlatformAndroid: name = "android"; break;
+        case CMakePlatformFreeBsd: name = "freebsd"; break;
         case CMakePlatformWindows: name = "windows"; break;
         case CMakePlatformLinux:   name = "linux";   break;
         case CMakePlatformMacOs:   name = "macos";   break;
@@ -436,7 +444,7 @@ c_make_config_is_enabled(const char *key, bool fallback)
 #include <assert.h>
 #include <stdarg.h>
 
-#if C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#if C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
 
 #  include <time.h>
 #  include <errno.h>
@@ -488,7 +496,9 @@ c_make_log(CMakeLogLevel log_level, const char *format, ...)
 
         if (GetConsoleMode(std_error, &mode) && SetConsoleMode(std_error, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING ))
 #else
+#  if C_MAKE_PLATFORM_LINUX
         int fileno(FILE *);
+#  endif
 
         if (isatty(fileno(stderr)))
 #endif
@@ -981,7 +991,7 @@ c_make_get_host_c_compiler(void)
 #  endif
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
         result = "cc";
-#elif C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_MACOS
         result = "clang";
 #elif C_MAKE_PLATFORM_WEB
         result = "clang";
@@ -1053,7 +1063,7 @@ c_make_get_host_cpp_compiler(void)
 #  endif
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
         result = "c++";
-#elif C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_MACOS
         result = "clang++";
 #elif C_MAKE_PLATFORM_WEB
         result = "clang++";
@@ -1148,6 +1158,10 @@ c_make_config_set(const char *_key, const char *value)
         if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("android")))
         {
             _c_make_context.target_platform = CMakePlatformAndroid;
+        }
+        else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("freebsd")))
+        {
+            _c_make_context.target_platform = CMakePlatformFreeBsd;
         }
         else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("windows")))
         {
@@ -1366,7 +1380,7 @@ c_make_needs_rebuild(const char *output_file, size_t input_file_count, const cha
     }
 
     return false;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     struct stat stats;
 
     if (stat(output_file, &stats))
@@ -1418,7 +1432,7 @@ c_make_file_exists(const char *file_name)
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
     return (file_attributes != INVALID_FILE_ATTRIBUTES);
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     bool result = false;
     struct stat stats;
 
@@ -1443,7 +1457,7 @@ c_make_directory_exists(const char *directory_name)
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
     return (file_attributes & FILE_ATTRIBUTE_DIRECTORY) ? true : false;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     bool result = false;
     struct stat stats;
 
@@ -1479,7 +1493,7 @@ c_make_create_directory(const char *directory_name)
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
     return true;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     if (!mkdir(directory_name, 0775))
     {
         return true;
@@ -1542,7 +1556,7 @@ c_make_read_entire_file(const char *file_name, CMakeString *content)
 
     CloseHandle(file);
     return true;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     int fd = open(file_name, O_RDONLY);
 
     if (fd >= 0)
@@ -1620,7 +1634,7 @@ c_make_write_entire_file(const char *file_name, CMakeString content)
 
     CloseHandle(file);
     return true;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     int fd = open(file_name, O_WRONLY | O_TRUNC | O_CREAT, 0664);
 
     if (fd >= 0)
@@ -1667,7 +1681,7 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
     return true;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     int src_fd = open(src_file_name, O_RDONLY);
 
     if (src_fd < 0)
@@ -1749,7 +1763,7 @@ c_make_rename_file(const char *old_file_name, const char *new_file_name)
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
     return result;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     if (rename(old_file_name, new_file_name))
     {
         return false;
@@ -1777,7 +1791,7 @@ c_make_delete_file(const char *file_name)
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
     return result;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     if (unlink(file_name))
     {
         if (errno == ENOENT)
@@ -1821,7 +1835,7 @@ c_make_find_program(const char *program_name)
 #if C_MAKE_PLATFORM_WINDOWS
     // TODO: search path
     return program_name;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     char *PATH = getenv("PATH");
 
     if (PATH)
@@ -2169,7 +2183,7 @@ print_help(const char *program_name)
     fprintf(stderr, "    target_c_flags       Flags for the target c build.\n");
     fprintf(stderr, "    target_cpp_compiler  Path to the target c++ compiler.\n");
     fprintf(stderr, "    target_cpp_flags     Flags for the target c++ build.\n");
-    fprintf(stderr, "    target_platform      Platform of the target. Either 'android', 'windows', 'linux', 'macos' or 'web'.\n");
+    fprintf(stderr, "    target_platform      Platform of the target. Either 'android', 'freebsd', 'windows', 'linux', 'macos' or 'web'.\n");
     fprintf(stderr, "                         The default is the host platform.\n");
     fprintf(stderr, "\n");
 }
