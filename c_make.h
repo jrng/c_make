@@ -40,6 +40,7 @@
 
 #define C_MAKE_ARCHITECTURE_AMD64   0
 #define C_MAKE_ARCHITECTURE_AARCH64 0
+#define C_MAKE_ARCHITECTURE_RISCV64 0
 #define C_MAKE_ARCHITECTURE_WASM32  0
 
 #if C_MAKE_PLATFORM_WINDOWS
@@ -50,6 +51,9 @@
 #    elif defined(__aarch64__)
 #      undef C_MAKE_ARCHITECTURE_AARCH64
 #      define C_MAKE_ARCHITECTURE_AARCH64 1
+#    elif defined(__riscv) && (__riscv_xlen == 64)
+#      undef C_MAKE_ARCHITECTURE_RISCV64
+#      define C_MAKE_ARCHITECTURE_RISCV64 1
 #    endif
 #  else
 #    if defined(_M_AMD64)
@@ -64,6 +68,9 @@
 #  elif defined(__aarch64__)
 #    undef C_MAKE_ARCHITECTURE_AARCH64
 #    define C_MAKE_ARCHITECTURE_AARCH64 1
+#  elif defined(__riscv) && (__riscv_xlen == 64)
+#    undef C_MAKE_ARCHITECTURE_RISCV64
+#    define C_MAKE_ARCHITECTURE_RISCV64 1
 #  endif
 #elif C_MAKE_PLATFORM_WEB
 #  if defined(__wasm__)
@@ -164,7 +171,8 @@ typedef enum CMakeArchitecture
 {
     CMakeArchitectureAmd64   = 0,
     CMakeArchitectureAarch64 = 1,
-    CMakeArchitectureWasm32  = 2,
+    CMakeArchitectureRiscv64 = 2,
+    CMakeArchitectureWasm32  = 3,
 } CMakeArchitecture;
 
 typedef enum CMakeBuildType
@@ -294,6 +302,8 @@ c_make_get_host_architecture(void)
     return CMakeArchitectureAmd64;
 #elif C_MAKE_ARCHITECTURE_AARCH64
     return CMakeArchitectureAarch64;
+#elif C_MAKE_ARCHITECTURE_RISCV64
+    return CMakeArchitectureRiscv64;
 #elif C_MAKE_ARCHITECTURE_WASM32
     return CMakeArchitectureWasm32;
 #endif
@@ -326,6 +336,7 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
     {
         case CMakeArchitectureAmd64:   name = "amd64";   break;
         case CMakeArchitectureAarch64: name = "aarch64"; break;
+        case CMakeArchitectureRiscv64: name = "riscv64"; break;
         case CMakeArchitectureWasm32:  name = "wasm32";  break;
     }
 
@@ -1189,6 +1200,10 @@ c_make_config_set(const char *_key, const char *value)
         else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("aarch64")))
         {
             _c_make_context.target_architecture = CMakeArchitectureAarch64;
+        }
+        else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("riscv64")))
+        {
+            _c_make_context.target_architecture = CMakeArchitectureRiscv64;
         }
         else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("wasm32")))
         {
@@ -2177,7 +2192,7 @@ print_help(const char *program_name)
     fprintf(stderr, "    host_c_compiler      Path to the host c compiler.\n");
     fprintf(stderr, "    host_cpp_compiler    Path to the host c++ compiler.\n");
     fprintf(stderr, "    install_prefix       Install prefix.\n");
-    fprintf(stderr, "    target_architecture  Architecture of the target. Either 'amd64', 'aarch64' or 'wasm32'.\n");
+    fprintf(stderr, "    target_architecture  Architecture of the target. Either 'amd64', 'aarch64', 'riscv64' or 'wasm32'.\n");
     fprintf(stderr, "                         The default is the host architecture.\n");
     fprintf(stderr, "    target_c_compiler    Path to the target c compiler.\n");
     fprintf(stderr, "    target_c_flags       Flags for the target c build.\n");
