@@ -2171,7 +2171,7 @@ c_make_command_run_and_wait(CMakeCommand command)
 static void
 print_help(const char *program_name)
 {
-    fprintf(stderr, "usage: %s <command> <build-directory> [--verbose] [<key>=\"<value>\", ...]\n", program_name);
+    fprintf(stderr, "usage: %s <command> <build-directory> [--verbose] [<key>=\"<value>\" ...]\n", program_name);
     fprintf(stderr, "\n");
     fprintf(stderr, "commands:\n");
     fprintf(stderr, "    setup                Create and configure a new build directory.\n");
@@ -2179,7 +2179,8 @@ print_help(const char *program_name)
     fprintf(stderr, "    install              Run the install target on the given build directory.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "options:\n");
-    fprintf(stderr, "    --verbose            This will print out the configuration and all the command lines that are executed.\n");
+    fprintf(stderr, "    --verbose            This will print out the configuration and all the\n");
+    fprintf(stderr, "                         command lines that are executed.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Every build directory has a configuration which is stored in 'c_make.txt'.\n");
     fprintf(stderr, "It consists of all the options that define a build. All options can be set\n");
@@ -2188,18 +2189,21 @@ print_help(const char *program_name)
     fprintf(stderr, "want can be stored in there, but there are some options that have special\n");
     fprintf(stderr, "meaning to c_make:\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "    build_type           Build type. Either 'debug', 'reldebug' or 'release'. Default: 'debug'\n");
-    fprintf(stderr, "    host_c_compiler      Path to the host c compiler.\n");
-    fprintf(stderr, "    host_cpp_compiler    Path to the host c++ compiler.\n");
-    fprintf(stderr, "    install_prefix       Install prefix.\n");
-    fprintf(stderr, "    target_architecture  Architecture of the target. Either 'amd64', 'aarch64', 'riscv64' or 'wasm32'.\n");
-    fprintf(stderr, "                         The default is the host architecture.\n");
-    fprintf(stderr, "    target_c_compiler    Path to the target c compiler.\n");
+    fprintf(stderr, "    build_type           Build type. Either 'debug', 'reldebug' or 'release'.\n");
+    fprintf(stderr, "                         Default: 'debug'\n");
+    fprintf(stderr, "    host_c_compiler      Path to or name of the host c compiler.\n");
+    fprintf(stderr, "    host_cpp_compiler    Path to or name of the host c++ compiler.\n");
+    fprintf(stderr, "    install_prefix       Install prefix. Defaults to '/usr/local'.\n");
+    fprintf(stderr, "    target_architecture  Architecture of the target. Either 'amd64', 'aarch64',\n");
+    fprintf(stderr, "                         'riscv64' or 'wasm32'. The default is the host\n");
+    fprintf(stderr, "                         architecture.\n");
+    fprintf(stderr, "    target_c_compiler    Path to or name of the target c compiler.\n");
     fprintf(stderr, "    target_c_flags       Flags for the target c build.\n");
-    fprintf(stderr, "    target_cpp_compiler  Path to the target c++ compiler.\n");
+    fprintf(stderr, "    target_cpp_compiler  Path to or name of the target c++ compiler.\n");
     fprintf(stderr, "    target_cpp_flags     Flags for the target c++ build.\n");
-    fprintf(stderr, "    target_platform      Platform of the target. Either 'android', 'freebsd', 'windows', 'linux', 'macos' or 'web'.\n");
-    fprintf(stderr, "                         The default is the host platform.\n");
+    fprintf(stderr, "    target_platform      Platform of the target. Either 'android', 'freebsd',\n");
+    fprintf(stderr, "                         'windows', 'linux', 'macos' or 'web'. The default is\n");
+    fprintf(stderr, "                         the host platform.\n");
     fprintf(stderr, "\n");
 }
 
