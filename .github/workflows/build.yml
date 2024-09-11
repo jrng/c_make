@@ -1,0 +1,49 @@
+name: build
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Bootstrap c_make
+        run: clang -o c_make c_make.c
+      - name: Setup c_make
+        run: ./c_make setup build --verbose
+      - name: Build c_make
+        run: ./c_make build build --verbose
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Bootstrap c_make
+        run: cc -o c_make c_make.c
+      - name: Setup c_make
+        run: ./c_make setup build --verbose
+      - name: Build c_make
+        run: ./c_make build build --verbose
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Bootstrap c_make
+        shell: cmd
+        run: |
+          call "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat"
+          cl -nologo -Fec_make.exe -Foc_make.obj c_make.c
+      - name: Setup c_make
+        shell: cmd
+        run: |
+          call "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat"
+          c_make.exe setup build --verbose
+      - name: Build c_make
+        shell: cmd
+        run: |
+          call "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat"
+          c_make.exe build build --verbose
