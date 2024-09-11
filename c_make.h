@@ -343,12 +343,6 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
     return name;
 }
 
-static inline bool
-c_make_compiler_is_msvc(const char *compiler)
-{
-    return (compiler && (compiler[0] == 'c') && (compiler[1] == 'l') && (compiler[2] == 0)) ? true : false;
-}
-
 C_MAKE_DEF void c_make_log(CMakeLogLevel log_level, const char *format, ...);
 
 C_MAKE_DEF void *c_make_memory_allocate(CMakeMemory *memory, size_t size);
@@ -368,6 +362,7 @@ C_MAKE_DEF CMakeString c_make_command_to_string(CMakeCommand command);
 C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
 C_MAKE_DEF CMakeString c_make_copy_string(CMakeMemory *memory, CMakeString str);
 C_MAKE_DEF CMakeString c_make_string_split_left(CMakeString *str, char c);
+C_MAKE_DEF CMakeString c_make_string_split_right(CMakeString *str, char c);
 C_MAKE_DEF CMakeString c_make_string_trim(CMakeString str);
 C_MAKE_DEF size_t c_make_string_find(CMakeString str, CMakeString pattern);
 C_MAKE_DEF char *c_make_string_to_c_string(CMakeMemory *memory, CMakeString str);
@@ -415,6 +410,20 @@ C_MAKE_DEF CMakeProcessId c_make_command_run(CMakeCommand command);
 C_MAKE_DEF bool c_make_process_wait(CMakeProcessId process_id);
 C_MAKE_DEF bool c_make_command_run_and_wait(CMakeCommand command);
 
+static inline bool
+c_make_compiler_is_msvc(const char *compiler)
+{
+    if (compiler)
+    {
+        CMakeString compiler_path = CMakeCString(compiler);
+        CMakeString compiler_name = c_make_string_split_right(&compiler_path, '\\');
+
+        return c_make_strings_are_equal(compiler_name, CMakeStringLiteral("cl.exe"));
+    }
+
+    return false;
+}
+
 static inline void
 c_make_config_set_if_not_exists(const char *key, const char *value)
 {
@@ -454,6 +463,7 @@ c_make_config_is_enabled(const char *key, bool fallback)
 #include <stdio.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <stdlib.h>
 
 #if C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
 
@@ -862,12 +872,36 @@ c_make_string_split_left(CMakeString *str, char c)
         str->data += 1;
     }
 
-    result.count = str->data - result.data;
+    if (str->count)
+    {
+        result.count = str->data - result.data;
+        str->count -= 1;
+        str->data += 1;
+    }
+
+    return result;
+}
+
+C_MAKE_DEF CMakeString
+c_make_string_split_right(CMakeString *str, char c)
+{
+    CMakeString result = *str;
+
+    while (str->count)
+    {
+        if (str->data[str->count - 1] == c)
+        {
+            break;
+        }
+
+        str->count -= 1;
+    }
 
     if (str->count)
     {
+        result.count -= str->count;
+        result.data += str->count;
         str->count -= 1;
-        str->data += 1;
     }
 
     return result;
@@ -998,7 +1032,7 @@ c_make_get_host_c_compiler(void)
 #  ifdef __MINGW32__
         result = "x86_64-w64-mingw32-gcc";
 #  else
-        result = "cl";
+        result = "cl.exe";
 #  endif
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
         result = "cc";
@@ -1070,7 +1104,7 @@ c_make_get_host_cpp_compiler(void)
 #  ifdef __MINGW32__
         result = "x86_64-w64-mingw32-g++";
 #  else
-        result = "cl";
+        result = "cl.exe";
 #  endif
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
         result = "c++";
@@ -1847,10 +1881,6 @@ c_make_has_slash_or_backslash(const char *path)
 C_MAKE_DEF const char *
 c_make_find_program(const char *program_name)
 {
-#if C_MAKE_PLATFORM_WINDOWS
-    // TODO: search path
-    return program_name;
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     char *PATH = getenv("PATH");
 
     if (PATH)
@@ -1862,7 +1892,12 @@ c_make_find_program(const char *program_name)
 
         while (paths.count)
         {
+#if C_MAKE_PLATFORM_WINDOWS
+            char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ';'));
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
             char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ':'));
+#endif
+
             char *full_path = c_make_c_string_path_concat(path, program_name);
 
             c_make_memory_set_used(&_c_make_context.private_memory, private_used);
@@ -1878,7 +1913,6 @@ c_make_find_program(const char *program_name)
     }
 
     return 0;
-#endif
 }
 
 C_MAKE_DEF CMakeString
