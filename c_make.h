@@ -169,10 +169,11 @@ typedef enum CMakePlatform
 
 typedef enum CMakeArchitecture
 {
-    CMakeArchitectureAmd64   = 0,
-    CMakeArchitectureAarch64 = 1,
-    CMakeArchitectureRiscv64 = 2,
-    CMakeArchitectureWasm32  = 3,
+    CMakeArchitectureUnknown = 0,
+    CMakeArchitectureAmd64   = 1,
+    CMakeArchitectureAarch64 = 2,
+    CMakeArchitectureRiscv64 = 3,
+    CMakeArchitectureWasm32  = 4,
 } CMakeArchitecture;
 
 typedef enum CMakeBuildType
@@ -306,6 +307,8 @@ c_make_get_host_architecture(void)
     return CMakeArchitectureRiscv64;
 #elif C_MAKE_ARCHITECTURE_WASM32
     return CMakeArchitectureWasm32;
+#else
+    return CMakeArchitectureUnknown;
 #endif
 }
 
@@ -334,6 +337,7 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
 
     switch (architecture)
     {
+        case CMakeArchitectureUnknown: name = "unknown"; break;
         case CMakeArchitectureAmd64:   name = "amd64";   break;
         case CMakeArchitectureAarch64: name = "aarch64"; break;
         case CMakeArchitectureRiscv64: name = "riscv64"; break;
@@ -1242,6 +1246,10 @@ c_make_config_set(const char *_key, const char *value)
         else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("wasm32")))
         {
             _c_make_context.target_architecture = CMakeArchitectureWasm32;
+        }
+        else
+        {
+            _c_make_context.target_architecture = CMakeArchitectureUnknown;
         }
     }
     else if (c_make_strings_are_equal(entry->key, CMakeStringLiteral("build_type")))
