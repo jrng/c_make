@@ -2367,6 +2367,18 @@ int main(int argument_count, char **arguments)
             return -1;
         }
 
+        char *ARCH = getenv("ARCH");
+
+        if (ARCH)
+        {
+            CMakeString ARCH_str = CMakeCString(ARCH);
+
+            if (c_make_strings_are_equal(ARCH_str, CMakeStringLiteral("arm64")))
+            {
+                c_make_config_set("target_architecture", "aarch64");
+            }
+        }
+
         char *CC = getenv("CC");
 
         if (CC)
