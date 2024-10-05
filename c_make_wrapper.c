@@ -156,5 +156,5 @@ int main(int argument_count, char **arguments)
         c_make_command_run_and_wait(command);
     }
 
-    return 0;
+    return _c_make_context.did_fail ? 1 : 0;
 }

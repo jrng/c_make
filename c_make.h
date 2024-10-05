@@ -229,6 +229,7 @@ typedef struct CMakeConfig
 typedef struct CMakeContext
 {
     bool verbose;
+    bool did_fail;
 
     CMakePlatform target_platform;
     CMakeArchitecture target_architecture;
@@ -2134,6 +2135,7 @@ c_make_process_wait(CMakeProcessId process_id)
 {
     if (process_id == CMakeInvalidProcessId)
     {
+        _c_make_context.did_fail = true;
         return false;
     }
 
@@ -2144,6 +2146,7 @@ c_make_process_wait(CMakeProcessId process_id)
 
     if (wait_result == WAIT_FAILED)
     {
+        _c_make_context.did_fail = true;
         // TODO: log error
         return false;
     }
@@ -2152,12 +2155,14 @@ c_make_process_wait(CMakeProcessId process_id)
 
     if (!GetExitCodeProcess(process_id, &exit_code))
     {
+        _c_make_context.did_fail = true;
         // TODO: log error
         result = false;
     }
 
     if (exit_code != 0)
     {
+        _c_make_context.did_fail = true;
         // TODO: log that the process has exited with an error code
         // TODO: What to return here? false or true?
         result = false;
@@ -2171,6 +2176,7 @@ c_make_process_wait(CMakeProcessId process_id)
 
         if (waitpid(process_id, &status, 0) < 0)
         {
+            _c_make_context.did_fail = true;
             // TODO: log error
             result = false;
             break;
@@ -2182,6 +2188,7 @@ c_make_process_wait(CMakeProcessId process_id)
 
             if (exit_code != 0)
             {
+                _c_make_context.did_fail = true;
                 // TODO: log that the process has exited with an error code
                 // TODO: What to return here? false or true?
                 result = false;
@@ -2192,6 +2199,7 @@ c_make_process_wait(CMakeProcessId process_id)
 
         if (WIFSIGNALED(status))
         {
+            _c_make_context.did_fail = true;
             // TODO: log the signal that terminated the child
             result = false;
             break;
@@ -2255,7 +2263,7 @@ int main(int argument_count, char **arguments)
     if (argument_count < 3)
     {
         print_help(arguments[0]);
-        return -1;
+        return 2;
     }
 
     CMakeString command = CMakeCString(arguments[1]);
@@ -2342,7 +2350,7 @@ int main(int argument_count, char **arguments)
 
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
 
-        return 0;
+        return _c_make_context.did_fail ? 1 : 0;
     }
     else
     {
@@ -2364,7 +2372,7 @@ int main(int argument_count, char **arguments)
         if (c_make_file_exists(config_file_name))
         {
             c_make_log(CMakeLogLevelError, "there is already a directory called '%s'\n", build_directory);
-            return -1;
+            return 2;
         }
 
         char *ARCH = getenv("ARCH");
@@ -2517,7 +2525,7 @@ int main(int argument_count, char **arguments)
 
         if (!c_make_store_config(config_file_name))
         {
-            return -1;
+            return 2;
         }
     }
     else if (c_make_strings_are_equal(command, CMakeStringLiteral("build")) ||
@@ -2526,18 +2534,18 @@ int main(int argument_count, char **arguments)
         if (!c_make_directory_exists(build_directory))
         {
             c_make_log(CMakeLogLevelError, "there is no build directory called '%s'\n", build_directory);
-            return -1;
+            return 2;
         }
 
         if (!c_make_file_exists(config_file_name))
         {
             c_make_log(CMakeLogLevelError, "the build directory '%s' was never setup\n", build_directory);
-            return -1;
+            return 2;
         }
 
         if (!c_make_load_config(config_file_name))
         {
-            return -1;
+            return 2;
         }
 
         if (_c_make_context.verbose)
@@ -2556,7 +2564,7 @@ int main(int argument_count, char **arguments)
         }
     }
 
-    return 0;
+    return _c_make_context.did_fail ? 1 : 0;
 }
 
 #endif // !defined(C_MAKE_NO_ENTRY_POINT)
