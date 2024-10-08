@@ -1490,7 +1490,7 @@ c_make_file_exists(const char *file_name)
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
-    return (file_attributes != INVALID_FILE_ATTRIBUTES);
+    return ((file_attributes != INVALID_FILE_ATTRIBUTES) && !(file_attributes & FILE_ATTRIBUTE_DIRECTORY)) ? true : false;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     bool result = false;
     struct stat stats;
@@ -1515,7 +1515,7 @@ c_make_directory_exists(const char *directory_name)
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
-    return (file_attributes & FILE_ATTRIBUTE_DIRECTORY) ? true : false;
+    return ((file_attributes != INVALID_FILE_ATTRIBUTES) && (file_attributes & FILE_ATTRIBUTE_DIRECTORY)) ? true : false;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     bool result = false;
     struct stat stats;
