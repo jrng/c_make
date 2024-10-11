@@ -110,7 +110,6 @@
 #  define UNICODE
 #  define _UNICODE
 #  define NOMINMAX
-#  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 
 typedef HANDLE CMakeProcessId;
@@ -263,6 +262,12 @@ typedef struct CMakeContext
     const char *color_bright_white;
 } CMakeContext;
 
+typedef struct CMakeWindowsSoftwarePackage
+{
+    const char *version;
+    const char *root_path;
+} CMakeWindowsSoftwarePackage;
+
 static inline CMakeString
 c_make_make_string(void *data, size_t count)
 {
@@ -387,10 +392,17 @@ C_MAKE_DEF const char *c_make_get_host_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_flags(void);
 
+C_MAKE_DEF bool c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install);
+C_MAKE_DEF bool c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk);
+C_MAKE_DEF const char *c_make_find_msvc_compiler(CMakeArchitecture target_architecture);
+C_MAKE_DEF void c_make_command_append_msvc_compiler_flags(CMakeCommand *command);
+C_MAKE_DEF void c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture);
+
 C_MAKE_DEF void c_make_config_set(const char *key, const char *value);
 C_MAKE_DEF CMakeConfigValue c_make_config_get(const char *key);
 
 C_MAKE_DEF bool c_make_store_config(const char *file_name);
+C_MAKE_DEF bool c_make_load_config(const char *file_name);
 
 C_MAKE_DEF bool c_make_needs_rebuild(const char *output_file, size_t input_file_count, const char **input_files);
 C_MAKE_DEF bool c_make_needs_rebuild_single_source(const char *output_file, const char *input_file);
@@ -500,6 +512,76 @@ static CMakeContext _c_make_context;
 
 #if C_MAKE_PLATFORM_WINDOWS
 
+#  pragma comment(lib, "ole32")
+#  pragma comment(lib, "oleaut32")
+#  pragma comment(lib, "advapi32")
+
+#  undef INTERFACE
+#  define INTERFACE ISetupInstance
+
+DECLARE_INTERFACE_(ISetupInstance, IUnknown)
+{
+    BEGIN_INTERFACE
+
+    // IUnknown
+    STDMETHOD  (QueryInterface)               (THIS_ REFIID, void **) PURE;
+    STDMETHOD_ (ULONG, AddRef)                (THIS) PURE;
+    STDMETHOD_ (ULONG, Release)               (THIS) PURE;
+
+    // ISetupInstance
+    STDMETHOD  (GetInstanceId)                (THIS_ BSTR *) PURE;
+    STDMETHOD  (GetInstallDate)               (THIS_ LPFILETIME) PURE;
+    STDMETHOD  (GetInstallationName)          (THIS_ BSTR *) PURE;
+    STDMETHOD  (GetInstallationPath)          (THIS_ BSTR *) PURE;
+    STDMETHOD  (GetInstallationVersion)       (THIS_ BSTR *) PURE;
+    STDMETHOD  (GetDisplayName)               (THIS_ LCID, BSTR *) PURE;
+    STDMETHOD  (GetDescription)               (THIS_ LCID, BSTR *) PURE;
+    STDMETHOD  (ResolvePath)                  (THIS_ LPCOLESTR, BSTR *) PURE;
+
+    END_INTERFACE
+};
+
+#  undef INTERFACE
+#  define INTERFACE IEnumSetupInstances
+
+DECLARE_INTERFACE_(IEnumSetupInstances, IUnknown)
+{
+    BEGIN_INTERFACE
+
+    // IUnknown
+    STDMETHOD  (QueryInterface)               (THIS_ REFIID, void **) PURE;
+    STDMETHOD_ (ULONG, AddRef)                (THIS) PURE;
+    STDMETHOD_ (ULONG, Release)               (THIS) PURE;
+
+    // IEnumSetupInstances
+    STDMETHOD  (Next)                         (THIS_ ULONG, ISetupInstance **, ULONG *) PURE;
+    STDMETHOD  (Skip)                         (THIS_ ULONG) PURE;
+    STDMETHOD  (Reset)                        (THIS) PURE;
+    STDMETHOD  (Clone)                        (THIS_ IEnumSetupInstances **) PURE;
+
+    END_INTERFACE
+};
+
+#  undef INTERFACE
+#  define INTERFACE ISetupConfiguration
+
+DECLARE_INTERFACE_(ISetupConfiguration, IUnknown)
+{
+    BEGIN_INTERFACE
+
+    // IUnknown
+    STDMETHOD  (QueryInterface)               (THIS_ REFIID, void **) PURE;
+    STDMETHOD_ (ULONG, AddRef)                (THIS) PURE;
+    STDMETHOD_ (ULONG, Release)               (THIS) PURE;
+
+    // ISetupConfiguration
+    STDMETHOD  (EnumInstances)                (THIS_ IEnumSetupInstances **) PURE;
+    STDMETHOD  (GetInstanceForCurrentProcess) (THIS_ ISetupInstance **) PURE;
+    STDMETHOD  (GetInstanceForPath)           (THIS_ LPCWSTR, ISetupInstance **) PURE;
+
+    END_INTERFACE
+};
+
 static inline LPWSTR
 c_make_utf8_to_utf16(CMakeMemory *memory, const char *utf8_str)
 {
@@ -508,6 +590,16 @@ c_make_utf8_to_utf16(CMakeMemory *memory, const char *utf8_str)
     LPWSTR utf16_str = (LPWSTR) c_make_memory_allocate(memory, utf16_size);
     MultiByteToWideChar(CP_UTF8, 0, utf8_str, -1, utf16_str, utf16_size);
     return utf16_str;
+}
+
+static inline const char *
+c_make_c_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_str)
+{
+    size_t utf16_length = wcslen(utf16_str);
+    size_t utf8_size = 4 * (utf16_length + 1);
+    char *utf8_str = (char *) c_make_memory_allocate(memory, utf8_size);
+    WideCharToMultiByte(CP_UTF8, 0, utf16_str, -1, utf8_str, utf8_size, 0, 0);
+    return utf8_str;
 }
 
 #endif
@@ -804,7 +896,7 @@ c_make_command_to_string(CMakeCommand command)
     for (size_t i = 0; i < command.count; i += 1)
     {
         const char *str = command.items[i];
-        result.count += c_make_get_c_string_length(str) + 1;
+        result.count += c_make_get_c_string_length(str) + 3;
     }
 
     if (result.count > 0)
@@ -814,8 +906,36 @@ c_make_command_to_string(CMakeCommand command)
 
         for (size_t i = 0; i < command.count; i += 1)
         {
+            bool needs_escaping = false;
             const char *str = command.items[i];
-            while (*str) *dst++ = *str++;
+
+            while (*str)
+            {
+                if ((*str == ',') || (*str == ';') || (*str == '=') || (*str == ' ') || (*str == '\t'))
+                {
+                    needs_escaping = true;
+                    break;
+                }
+
+                str += 1;
+            }
+
+            if (needs_escaping)
+            {
+                *dst++ = '"';
+
+                const char *src = command.items[i];
+                while (*src) *dst++ = *src++;
+
+                *dst++ = '"';
+            }
+            else
+            {
+                const char *src = command.items[i];
+                while (*src) *dst++ = *src++;
+
+                result.count -= 2;
+            }
 
             *dst++ = ' ';
         }
@@ -916,12 +1036,16 @@ c_make_string_split_right(CMakeString *str, char c)
 C_MAKE_DEF CMakeString
 c_make_string_trim(CMakeString str)
 {
-    while (str.count && (str.data[str.count - 1] == ' '))
+    while (str.count && ((str.data[str.count - 1] == ' ') ||
+                         (str.data[str.count - 1] == '\t') ||
+                         (str.data[str.count - 1] == '\r') ||
+                         (str.data[str.count - 1] == '\n')))
     {
         str.count -= 1;
     }
 
-    while (str.count && (str.data[0] == ' '))
+    while (str.count && ((str.data[0] == ' ') || (str.data[0] == '\t') ||
+                         (str.data[0] == '\r') || (str.data[0] == '\n')))
     {
         str.count -= 1;
         str.data += 1;
@@ -1054,6 +1178,13 @@ c_make_get_host_c_compiler(void)
         result = c_make_find_program(result);
     }
 
+#if C_MAKE_PLATFORM_WINDOWS
+    if (!result)
+    {
+        result = c_make_find_msvc_compiler(c_make_get_host_architecture());
+    }
+#endif
+
     return result;
 }
 
@@ -1066,15 +1197,19 @@ c_make_get_target_c_compiler(void)
     if (value.is_valid)
     {
         result = value.val;
+
+        if (!c_make_has_slash_or_backslash(result))
+        {
+            result = c_make_find_program(result);
+        }
     }
     else
     {
+#if C_MAKE_PLATFORM_WINDOWS
+        result = c_make_find_msvc_compiler(c_make_get_target_architecture());
+#else
         result = c_make_get_host_c_compiler();
-    }
-
-    if (!c_make_has_slash_or_backslash(result))
-    {
-        result = c_make_find_program(result);
+#endif
     }
 
     return result;
@@ -1126,6 +1261,13 @@ c_make_get_host_cpp_compiler(void)
         result = c_make_find_program(result);
     }
 
+#if C_MAKE_PLATFORM_WINDOWS
+    if (!result)
+    {
+        result = c_make_find_msvc_compiler(c_make_get_host_architecture());
+    }
+#endif
+
     return result;
 }
 
@@ -1138,15 +1280,19 @@ c_make_get_target_cpp_compiler(void)
     if (value.is_valid)
     {
         result = value.val;
+
+        if (!c_make_has_slash_or_backslash(result))
+        {
+            result = c_make_find_program(result);
+        }
     }
     else
     {
+#if C_MAKE_PLATFORM_WINDOWS
+        result = c_make_find_msvc_compiler(c_make_get_target_architecture());
+#else
         result = c_make_get_host_cpp_compiler();
-    }
-
-    if (!c_make_has_slash_or_backslash(result))
-    {
-        result = c_make_find_program(result);
+#endif
     }
 
     return result;
@@ -1164,6 +1310,326 @@ c_make_get_target_cpp_flags(void)
     }
 
     return result;
+}
+
+C_MAKE_DEF bool
+c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    CoInitializeEx(0, COINIT_MULTITHREADED);
+
+    const GUID CLSID_SetupConfiguration = { 0x177F0C4A, 0x1CD3, 0x4DE7, { 0xA3, 0x2C, 0x71, 0xDB, 0xBB, 0x9F, 0xA3, 0x6D } };
+    const GUID IID_ISetupConfiguration  = { 0x42843719, 0xDB4C, 0x46C2, { 0x8E, 0x7C, 0x64, 0xF1, 0x81, 0x6E, 0xFD, 0x5B } };
+
+    ISetupConfiguration *setup_configuration = 0;
+#ifdef __cplusplus
+    HRESULT res = CoCreateInstance(CLSID_SetupConfiguration, 0, CLSCTX_INPROC_SERVER, IID_ISetupConfiguration, (void **) &setup_configuration);
+#else
+    HRESULT res = CoCreateInstance(&CLSID_SetupConfiguration, 0, CLSCTX_INPROC_SERVER, &IID_ISetupConfiguration, (void **) &setup_configuration);
+#endif
+
+    if (res != S_OK)
+    {
+        return false;
+    }
+
+    IEnumSetupInstances *enum_setup_instances = 0;
+#ifdef __cplusplus
+    res = setup_configuration->EnumInstances(&enum_setup_instances);
+#else
+    res = setup_configuration->lpVtbl->EnumInstances(setup_configuration, &enum_setup_instances);
+#endif
+
+    if ((res != S_OK) || !enum_setup_instances)
+    {
+#ifdef __cplusplus
+        setup_configuration->Release();
+#else
+        setup_configuration->lpVtbl->Release(setup_configuration);
+#endif
+        return false;
+    }
+
+    bool result = false;
+    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+    for (;;)
+    {
+        ULONG count = 0;
+        ISetupInstance *setup_instance = 0;
+#ifdef __cplusplus
+        res = enum_setup_instances->Next(1, &setup_instance, &count);
+#else
+        res = enum_setup_instances->lpVtbl->Next(enum_setup_instances, 1, &setup_instance, &count);
+#endif
+
+        if (res != S_OK)
+        {
+            break;
+        }
+
+        BSTR installation_path_bstr;
+#ifdef __cplusplus
+        res = setup_instance->GetInstallationPath(&installation_path_bstr);
+#else
+        res = setup_instance->lpVtbl->GetInstallationPath(setup_instance, &installation_path_bstr);
+#endif
+
+        if (res != S_OK)
+        {
+#ifdef __cplusplus
+            setup_instance->Release();
+#else
+            setup_instance->lpVtbl->Release(setup_instance);
+#endif
+            continue;
+        }
+
+        size_t installation_path_size = *((DWORD *) installation_path_bstr - 1);
+        char *installation_path = (char *) c_make_memory_allocate(&_c_make_context.public_memory, 2 * (installation_path_size + 1));
+        int ret = WideCharToMultiByte(CP_UTF8, 0, installation_path_bstr, installation_path_size, installation_path, 2 * (installation_path_size + 1), 0, 0);
+        installation_path[ret] = 0;
+        SysFreeString(installation_path_bstr);
+
+#ifdef __cplusplus
+        setup_instance->Release();
+#else
+        setup_instance->lpVtbl->Release(setup_instance);
+#endif
+
+        const char *version_file_path = c_make_c_string_path_concat(installation_path, "VC", "Auxiliary", "Build", "Microsoft.VCToolsVersion.default.txt");
+        CMakeString version_file_content;
+        c_make_read_entire_file(version_file_path, &version_file_content);
+
+        CMakeString version_str = c_make_string_split_left(&version_file_content, '\n');
+        char *version = c_make_string_to_c_string(&_c_make_context.public_memory, c_make_string_trim(version_str));
+
+        visual_studio_install->version = version;
+        visual_studio_install->root_path = installation_path;
+
+        result = true;
+        break;
+    }
+
+    if (!result)
+    {
+        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+    }
+
+#ifdef __cplusplus
+    enum_setup_instances->Release();
+    setup_configuration->Release();
+#else
+    enum_setup_instances->lpVtbl->Release(enum_setup_instances);
+    setup_configuration->lpVtbl->Release(setup_configuration);
+#endif
+
+    return result;
+#else
+    (void) visual_studio_install;
+    return false;
+#endif
+}
+
+C_MAKE_DEF bool
+c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    HKEY installed_roots_key;
+
+    LSTATUS res = RegOpenKeyEx(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots", 0,
+                               KEY_QUERY_VALUE | KEY_WOW64_32KEY | KEY_ENUMERATE_SUB_KEYS, &installed_roots_key);
+
+    if (res != ERROR_SUCCESS)
+    {
+        return false;
+    }
+
+    DWORD root_length;
+    res = RegGetValue(installed_roots_key, 0, L"KitsRoot10", RRF_RT_REG_SZ, 0, 0, &root_length);
+
+    if (res != ERROR_SUCCESS)
+    {
+        RegCloseKey(installed_roots_key);
+        return false;
+    }
+
+    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+    wchar_t *windows_sdk_root_path = (wchar_t *) c_make_memory_allocate(&_c_make_context.private_memory, root_length);
+
+    res = RegGetValue(installed_roots_key, 0, L"KitsRoot10", RRF_RT_REG_SZ, 0, windows_sdk_root_path, &root_length);
+
+    if (res != ERROR_SUCCESS)
+    {
+        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+        RegCloseKey(installed_roots_key);
+        return false;
+    }
+
+    size_t include_length = sizeof(L"Include\\*") - 2;
+    wchar_t *include_path = (wchar_t *) c_make_memory_allocate(&_c_make_context.private_memory, root_length + include_length);
+
+    char *dst = (char *) include_path;
+    char *src = (char *) windows_sdk_root_path;
+
+    for (LONG i = 0; i < (root_length - 2); i += 1)
+    {
+        *dst++ = *src++;
+    }
+
+    src = (char *) L"Include\\*";
+
+    for (size_t i = 0; i < include_length; i += 1)
+    {
+        *dst++ = *src++;
+    }
+
+    *dst++ = 0;
+    *dst++ = 0;
+
+    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+    const char *best_version = 0;
+    int best_v0 = 0, best_v1 = 0, best_v2 = 0, best_v3 = 0;
+
+    WIN32_FIND_DATA entry = { 0 };
+    HANDLE directory = FindFirstFile(include_path, &entry);
+
+    if (directory != INVALID_HANDLE_VALUE)
+    {
+        for (;;)
+        {
+            if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (entry.cFileName[0] != '.'))
+            {
+                int v0, v1, v2, v3;
+                int ret = swscanf(entry.cFileName, L"%d.%d.%d.%d", &v0, &v1, &v2, &v3);
+
+                if ((ret == 4) && ((v0 > best_v0) || ((v0 == best_v0) && ((v1 > best_v1) || ((v1 == best_v1) && ((v2 > best_v2) || ((v2 == best_v2) && (v3 > best_v3))))))))
+                {
+                    c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+                    best_v0 = v0;
+                    best_v1 = v1;
+                    best_v2 = v2;
+                    best_v3 = v3;
+                    best_version = c_make_c_string_utf16_to_utf8(&_c_make_context.public_memory, entry.cFileName);
+                }
+            }
+
+            if (!FindNextFile(directory, &entry))
+            {
+                FindClose(directory);
+                break;
+            }
+        }
+    }
+
+    RegCloseKey(installed_roots_key);
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
+    if (!best_version)
+    {
+        return false;
+    }
+
+    windows_sdk->root_path = c_make_c_string_utf16_to_utf8(&_c_make_context.public_memory, windows_sdk_root_path);
+    windows_sdk->version = best_version;
+
+    return true;
+#else
+    (void) windows_sdk;
+    return false;
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_find_msvc_compiler(CMakeArchitecture target_architecture)
+{
+    const char *result = 0;
+    CMakeWindowsSoftwarePackage visual_studio_install;
+
+    if (c_make_find_visual_studio(&visual_studio_install))
+    {
+        const char *arch = "x64";
+
+        if (target_architecture == CMakeArchitectureAarch64)
+        {
+            arch = "arm64";
+        }
+
+        result = c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
+                                             visual_studio_install.version, "bin", "Hostx64", arch, "cl.exe");
+    }
+
+    return result;
+}
+
+C_MAKE_DEF void
+c_make_command_append_msvc_compiler_flags(CMakeCommand *command)
+{
+    CMakeWindowsSoftwarePackage visual_studio_install;
+
+    if (c_make_find_visual_studio(&visual_studio_install))
+    {
+        c_make_command_append(command,
+            c_make_c_string_concat("-I",
+                c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
+                                            visual_studio_install.version, "include")));
+    }
+
+    CMakeWindowsSoftwarePackage windows_sdk;
+
+    if (c_make_find_windows_sdk(&windows_sdk))
+    {
+        c_make_command_append(command,
+            c_make_c_string_concat("-I",
+                c_make_c_string_path_concat(windows_sdk.root_path, "Include", windows_sdk.version, "ucrt")));
+        c_make_command_append(command,
+            c_make_c_string_concat("-I",
+                c_make_c_string_path_concat(windows_sdk.root_path, "Include", windows_sdk.version, "shared")));
+        c_make_command_append(command,
+            c_make_c_string_concat("-I",
+                c_make_c_string_path_concat(windows_sdk.root_path, "Include", windows_sdk.version, "um")));
+        c_make_command_append(command,
+            c_make_c_string_concat("-I",
+                c_make_c_string_path_concat(windows_sdk.root_path, "Include", windows_sdk.version, "winrt")));
+        c_make_command_append(command,
+            c_make_c_string_concat("-I",
+                c_make_c_string_path_concat(windows_sdk.root_path, "Include", windows_sdk.version, "cppwinrt")));
+    }
+}
+
+C_MAKE_DEF void
+c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture)
+{
+    const char *arch = "x64";
+
+    if (target_architecture == CMakeArchitectureAarch64)
+    {
+        arch = "arm64";
+    }
+
+    CMakeWindowsSoftwarePackage visual_studio_install;
+
+    if (c_make_find_visual_studio(&visual_studio_install))
+    {
+        c_make_command_append(command,
+            c_make_c_string_concat("-libpath:",
+                c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
+                                            visual_studio_install.version, "lib", arch)));
+    }
+
+    CMakeWindowsSoftwarePackage windows_sdk;
+
+    if (c_make_find_windows_sdk(&windows_sdk))
+    {
+        c_make_command_append(command,
+            c_make_c_string_concat("-libpath:",
+                c_make_c_string_path_concat(windows_sdk.root_path, "Lib", windows_sdk.version, "ucrt", arch)));
+        c_make_command_append(command,
+            c_make_c_string_concat("-libpath:",
+                c_make_c_string_path_concat(windows_sdk.root_path, "Lib", windows_sdk.version, "um", arch)));
+    }
 }
 
 C_MAKE_DEF void
@@ -2326,8 +2792,12 @@ int main(int argument_count, char **arguments)
 
         if (c_make_compiler_is_msvc(compiler))
         {
+            c_make_command_append_msvc_compiler_flags(&command);
+
             exe_output_arg = c_make_c_string_concat("-Fe\"", c_make_executable_file, "\"");
-            c_make_command_append(&command, "-nologo", exe_output_arg, c_make_source_file);
+            c_make_command_append(&command, "-nologo", exe_output_arg, c_make_source_file, "-link");
+
+            c_make_command_append_msvc_linker_flags(&command, c_make_get_host_architecture());
         }
         else
         {
