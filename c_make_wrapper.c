@@ -62,7 +62,8 @@ int main(int argument_count, char **arguments)
 
                 CMakeString source_content = { 0 };
 
-                if (c_make_read_entire_file(c_make_source_file, &source_content))
+                if (!c_make_compiler_is_msvc(compiler) &&
+                    c_make_read_entire_file(c_make_source_file, &source_content))
                 {
                     CMakeString first_line = c_make_string_split_left(&source_content, '\n');
                     size_t index = c_make_string_find(first_line, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS"));
@@ -101,8 +102,11 @@ int main(int argument_count, char **arguments)
 
                 if (c_make_compiler_is_msvc(compiler))
                 {
+                    c_make_command_append_msvc_compiler_flags(&command);
                     c_make_command_append(&command, "-nologo");
                     c_make_command_append(&command, c_make_c_string_concat("-Fe", c_make_executable_file), c_make_source_file);
+                    c_make_command_append(&command, "-link");
+                    c_make_command_append_msvc_linker_flags(&command, c_make_get_target_architecture());
                 }
                 else
                 {
