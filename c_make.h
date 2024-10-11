@@ -512,9 +512,11 @@ static CMakeContext _c_make_context;
 
 #if C_MAKE_PLATFORM_WINDOWS
 
-#  pragma comment(lib, "ole32")
-#  pragma comment(lib, "oleaut32")
-#  pragma comment(lib, "advapi32")
+#  if !defined(__MINGW32__)
+#    pragma comment(lib, "ole32")
+#    pragma comment(lib, "oleaut32")
+#    pragma comment(lib, "advapi32")
+#  endif
 
 #  undef INTERFACE
 #  define INTERFACE ISetupInstance
@@ -1473,7 +1475,7 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
     char *dst = (char *) include_path;
     char *src = (char *) windows_sdk_root_path;
 
-    for (LONG i = 0; i < (root_length - 2); i += 1)
+    for (size_t i = 0; i < (root_length - 2); i += 1)
     {
         *dst++ = *src++;
     }
@@ -2520,7 +2522,8 @@ c_make_command_run(CMakeCommand command)
     }
 
 #if C_MAKE_PLATFORM_WINDOWS
-    STARTUPINFO start_info = { sizeof(STARTUPINFO) };
+    STARTUPINFO start_info = { 0 };
+    start_info.cb = sizeof(start_info);
     start_info.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
     start_info.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     start_info.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
