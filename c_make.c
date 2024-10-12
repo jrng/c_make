@@ -1,4 +1,4 @@
-// C_MAKE_COMPILER_FLAGS="-std=c99 -Wall -Wextra -pedantic"
+// C_MAKE_COMPILER_FLAGS      = "-std=c99 -Wall -Wextra -pedantic"
 #define C_MAKE_IMPLEMENTATION
 #include "c_make.h"
 

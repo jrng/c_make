@@ -65,35 +65,66 @@ int main(int argument_count, char **arguments)
                 if (!c_make_compiler_is_msvc(compiler) &&
                     c_make_read_entire_file(c_make_source_file, &source_content))
                 {
-                    CMakeString first_line = c_make_string_split_left(&source_content, '\n');
-                    size_t index = c_make_string_find(first_line, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS"));
+                    bool had_msvc_flags = false;
+                    bool had_compiler_flags = false;
 
-                    if (index < first_line.count)
+                    for (int line_index = 0; (line_index < 3) && source_content.count; line_index += 1)
                     {
-                        CMakeString argument;
-                        argument.count = first_line.count - index;
-                        argument.data  = first_line.data + index;
+                        CMakeString line = c_make_string_split_left(&source_content, '\n');
+                        size_t index = c_make_string_find(line, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS"));
 
-                        CMakeString key = c_make_string_trim(c_make_string_split_left(&argument, '='));
-                        CMakeString compiler_flags = c_make_string_trim(argument);
-
-                        if (c_make_strings_are_equal(key, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS")))
+                        if (index < line.count)
                         {
-                            if ((compiler_flags.count > 0) && (compiler_flags.data[0] == '"'))
+                            CMakeString argument;
+                            argument.count = line.count - index;
+                            argument.data  = line.data + index;
+
+                            CMakeString key = c_make_string_trim(c_make_string_split_left(&argument, '='));
+                            CMakeString compiler_flags = c_make_string_trim(argument);
+
+                            if (!had_compiler_flags && c_make_strings_are_equal(key, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS")) &&
+                                !c_make_compiler_is_msvc(compiler))
                             {
-                                compiler_flags.count -= 1;
-                                compiler_flags.data += 1;
+                                if ((compiler_flags.count > 0) && (compiler_flags.data[0] == '"'))
+                                {
+                                    compiler_flags.count -= 1;
+                                    compiler_flags.data += 1;
+                                }
+
+                                if ((compiler_flags.count > 0) && (compiler_flags.data[compiler_flags.count - 1] == '"'))
+                                {
+                                    compiler_flags.count -= 1;
+                                }
+
+                                compiler_flags = c_make_string_trim(compiler_flags);
+
+                                c_make_command_append_command_line(&command, c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags));
+                                c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags)));
+
+                                had_compiler_flags = true;
                             }
 
-                            if ((compiler_flags.count > 0) && (compiler_flags.data[compiler_flags.count - 1] == '"'))
+                            if (!had_msvc_flags && c_make_strings_are_equal(key, CMakeStringLiteral("C_MAKE_COMPILER_FLAGS.msvc")) &&
+                                c_make_compiler_is_msvc(compiler))
                             {
-                                compiler_flags.count -= 1;
+                                if ((compiler_flags.count > 0) && (compiler_flags.data[0] == '"'))
+                                {
+                                    compiler_flags.count -= 1;
+                                    compiler_flags.data += 1;
+                                }
+
+                                if ((compiler_flags.count > 0) && (compiler_flags.data[compiler_flags.count - 1] == '"'))
+                                {
+                                    compiler_flags.count -= 1;
+                                }
+
+                                compiler_flags = c_make_string_trim(compiler_flags);
+
+                                c_make_command_append_command_line(&command, c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags));
+                                c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags)));
+
+                                had_msvc_flags = true;
                             }
-
-                            compiler_flags = c_make_string_trim(compiler_flags);
-
-                            c_make_command_append_command_line(&command, c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags));
-                            c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags)));
                         }
                     }
                 }
