@@ -1318,17 +1318,26 @@ C_MAKE_DEF bool
 c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
 {
 #if C_MAKE_PLATFORM_WINDOWS
+
+#  ifdef __cplusplus
+#    define CALL0(obj, method) obj->method()
+#    define CALL1(obj, method, ...) obj->method(__VA_ARGS__)
+#  else
+#    define CALL0(obj, method) obj->lpVtbl->method(obj)
+#    define CALL1(obj, method, ...) obj->lpVtbl->method(obj, __VA_ARGS__)
+#  endif
+
     CoInitializeEx(0, COINIT_MULTITHREADED);
 
     const GUID CLSID_SetupConfiguration = { 0x177F0C4A, 0x1CD3, 0x4DE7, { 0xA3, 0x2C, 0x71, 0xDB, 0xBB, 0x9F, 0xA3, 0x6D } };
     const GUID IID_ISetupConfiguration  = { 0x42843719, 0xDB4C, 0x46C2, { 0x8E, 0x7C, 0x64, 0xF1, 0x81, 0x6E, 0xFD, 0x5B } };
 
     ISetupConfiguration *setup_configuration = 0;
-#ifdef __cplusplus
+#  ifdef __cplusplus
     HRESULT res = CoCreateInstance(CLSID_SetupConfiguration, 0, CLSCTX_INPROC_SERVER, IID_ISetupConfiguration, (void **) &setup_configuration);
-#else
+#  else
     HRESULT res = CoCreateInstance(&CLSID_SetupConfiguration, 0, CLSCTX_INPROC_SERVER, &IID_ISetupConfiguration, (void **) &setup_configuration);
-#endif
+#  endif
 
     if (res != S_OK)
     {
@@ -1336,19 +1345,11 @@ c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
     }
 
     IEnumSetupInstances *enum_setup_instances = 0;
-#ifdef __cplusplus
-    res = setup_configuration->EnumInstances(&enum_setup_instances);
-#else
-    res = setup_configuration->lpVtbl->EnumInstances(setup_configuration, &enum_setup_instances);
-#endif
+    res = CALL1(setup_configuration, EnumInstances, &enum_setup_instances);
 
     if ((res != S_OK) || !enum_setup_instances)
     {
-#ifdef __cplusplus
-        setup_configuration->Release();
-#else
-        setup_configuration->lpVtbl->Release(setup_configuration);
-#endif
+        CALL0(setup_configuration, Release);
         return false;
     }
 
@@ -1359,11 +1360,7 @@ c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
     {
         ULONG count = 0;
         ISetupInstance *setup_instance = 0;
-#ifdef __cplusplus
-        res = enum_setup_instances->Next(1, &setup_instance, &count);
-#else
-        res = enum_setup_instances->lpVtbl->Next(enum_setup_instances, 1, &setup_instance, &count);
-#endif
+        res = CALL1(enum_setup_instances, Next, 1, &setup_instance, &count);
 
         if (res != S_OK)
         {
@@ -1371,19 +1368,11 @@ c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
         }
 
         BSTR installation_path_bstr;
-#ifdef __cplusplus
-        res = setup_instance->GetInstallationPath(&installation_path_bstr);
-#else
-        res = setup_instance->lpVtbl->GetInstallationPath(setup_instance, &installation_path_bstr);
-#endif
+        res = CALL1(setup_instance, GetInstallationPath, &installation_path_bstr);
 
         if (res != S_OK)
         {
-#ifdef __cplusplus
-            setup_instance->Release();
-#else
-            setup_instance->lpVtbl->Release(setup_instance);
-#endif
+            CALL0(setup_instance, Release);
             continue;
         }
 
@@ -1393,11 +1382,7 @@ c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
         installation_path[ret] = 0;
         SysFreeString(installation_path_bstr);
 
-#ifdef __cplusplus
-        setup_instance->Release();
-#else
-        setup_instance->lpVtbl->Release(setup_instance);
-#endif
+        CALL0(setup_instance, Release);
 
         const char *version_file_path = c_make_c_string_path_concat(installation_path, "VC", "Auxiliary", "Build", "Microsoft.VCToolsVersion.default.txt");
         CMakeString version_file_content;
@@ -1418,16 +1403,15 @@ c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
     }
 
-#ifdef __cplusplus
-    enum_setup_instances->Release();
-    setup_configuration->Release();
-#else
-    enum_setup_instances->lpVtbl->Release(enum_setup_instances);
-    setup_configuration->lpVtbl->Release(setup_configuration);
-#endif
+    CALL0(enum_setup_instances, Release);
+    CALL0(setup_configuration, Release);
 
     return result;
-#else
+
+#  undef CALL0
+#  undef CALL1
+
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     (void) visual_studio_install;
     return false;
 #endif
@@ -1538,7 +1522,7 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
     windows_sdk->version = best_version;
 
     return true;
-#else
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     (void) windows_sdk;
     return false;
 #endif
