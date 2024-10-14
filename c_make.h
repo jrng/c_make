@@ -2709,6 +2709,9 @@ print_help(const char *program_name)
     fprintf(stderr, "                         'windows', 'linux', 'macos' or 'web'. The default is\n");
     fprintf(stderr, "                         the host platform.\n");
     fprintf(stderr, "\n");
+    fprintf(stderr, "host platform: %s\n", c_make_get_platform_name(c_make_get_host_platform()));
+    fprintf(stderr, "host architecture: %s\n", c_make_get_architecture_name(c_make_get_host_architecture()));
+    fprintf(stderr, "\n");
 }
 
 int main(int argument_count, char **arguments)
