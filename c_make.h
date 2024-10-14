@@ -126,6 +126,12 @@ typedef pid_t CMakeProcessId;
 
 #endif
 
+#if C_MAKE_PLATFORM_FREEBSD
+#  include <sys/sysctl.h>
+#elif C_MAKE_PLATFORM_MACOS
+#  include <libproc.h>
+#endif
+
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -2726,8 +2732,74 @@ int main(int argument_count, char **arguments)
     const char *build_directory = arguments[2];
     const char *config_file_name = c_make_c_string_path_concat(build_directory, "c_make.txt");
 
+    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+    CMakeString executable_path;
+    executable_path.count = 4096;
+    executable_path.data = (char *) c_make_memory_allocate(&_c_make_context.private_memory, executable_path.count);
+
+#if C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
+    ssize_t readlink(const char *, char *, size_t);
+    ssize_t ret = readlink("/proc/self/exe", executable_path.data, executable_path.count);
+
+    if (ret > 0)
+    {
+        executable_path.count = ret;
+        c_make_string_split_right(&executable_path, '/');
+    }
+    else
+    {
+        executable_path = CMakeStringLiteral(".");
+    }
+#elif C_MAKE_PLATFORM_FREEBSD
+    int sysctl_name[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+    size_t count = executable_path.count;
+    int ret = sysctl(sysctl_name, 4, executable_path.data, &count, 0, 0);
+
+    if (ret == 0)
+    {
+        executable_path.count = count;
+        c_make_string_split_right(&executable_path, '/');
+    }
+    else
+    {
+        executable_path = CMakeStringLiteral(".");
+    }
+#elif C_MAKE_PLATFORM_WINDOWS
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
+    wchar_t *module_file_name = (wchar_t *) c_make_memory_allocate(&_c_make_context.private_memory, 2 * executable_path.count);
+    DWORD ret = GetModuleFileName(0, module_file_name, executable_path.count);
+
+    if (ret > 0)
+    {
+        executable_path = CMakeCString(c_make_c_string_utf16_to_utf8(&_c_make_context.private_memory, module_file_name));
+        c_make_string_split_right(&executable_path, '\\');
+    }
+    else
+    {
+        executable_path = CMakeStringLiteral(".");
+    }
+#elif C_MAKE_PLATFORM_MACOS
+    int ret = proc_pidpath(getpid(), executable_path.data, executable_path.count);
+
+    if (ret > 0)
+    {
+        executable_path.count = ret;
+        c_make_string_split_right(&executable_path, '/');
+    }
+    else
+    {
+        executable_path = CMakeStringLiteral(".");
+    }
+#endif
+
+    const char *source_directory = c_make_string_to_c_string(&_c_make_context.public_memory, executable_path);
+
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
     _c_make_context.build_path = build_directory;
-    _c_make_context.source_path = ".";
+    _c_make_context.source_path = source_directory;
 
     for (int i = 3; i < argument_count; i += 1)
     {
@@ -2739,7 +2811,6 @@ int main(int argument_count, char **arguments)
         }
     }
 
-    // TODO: use executable path
 #if C_MAKE_PLATFORM_WINDOWS
     const char *c_make_executable_file = "c_make.exe";
 #else
@@ -2750,6 +2821,9 @@ int main(int argument_count, char **arguments)
 #else
     const char *c_make_source_file = "c_make.c";
 #endif
+
+    c_make_executable_file = c_make_c_string_path_concat(_c_make_context.source_path, c_make_executable_file);
+    c_make_source_file = c_make_c_string_path_concat(_c_make_context.source_path, c_make_source_file);
 
     const char *c_make_source_files[] = { c_make_source_file, __FILE__ };
 
@@ -2803,7 +2877,7 @@ int main(int argument_count, char **arguments)
         else
         {
             command.count = 0;
-            c_make_command_append(&command, c_make_c_string_path_concat(".", c_make_executable_file));
+            c_make_command_append(&command, c_make_executable_file);
             c_make_command_append_slice(&command, argument_count - 1, (const char **) (arguments + 1));
             c_make_command_run_and_wait(command);
         }
