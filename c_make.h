@@ -374,6 +374,9 @@ C_MAKE_DEF void c_make_memory_restore(size_t saved);
 C_MAKE_DEF void c_make_command_append_va(CMakeCommand *command, size_t count, ...);
 C_MAKE_DEF void c_make_command_append_slice(CMakeCommand *command, size_t count, const char **items);
 C_MAKE_DEF void c_make_command_append_command_line(CMakeCommand *command, const char *str);
+C_MAKE_DEF void c_make_command_append_output(CMakeCommand *command, const char *output_path);
+C_MAKE_DEF void c_make_command_append_default_compiler_flags(CMakeCommand *command, CMakeBuildType build_type);
+C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture);
 C_MAKE_DEF CMakeString c_make_command_to_string(CMakeCommand command);
 
 C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
@@ -893,6 +896,110 @@ c_make_command_append_command_line(CMakeCommand *command, const char *str)
                 c_make_command_append_slice(command, 1, (const char **) &c_str);
             }
         }
+    }
+}
+
+C_MAKE_DEF void
+c_make_command_append_output(CMakeCommand *command, const char *output_path)
+{
+    if ((command->count > 0) && command->items[0])
+    {
+        const char *compiler = command->items[0];
+
+        const char *arguments[2];
+
+        if (c_make_compiler_is_msvc(compiler))
+        {
+            arguments[0] = c_make_c_string_concat("-Fe", output_path, ".exe");
+            arguments[1] = c_make_c_string_concat("-Fo", output_path, ".obj");
+        }
+        else
+        {
+            arguments[0] = "-o";
+            arguments[1] = output_path;
+        }
+
+        c_make_command_append_slice(command, CMakeArrayCount(arguments), arguments);
+    }
+    else
+    {
+        c_make_log(CMakeLogLevelWarning, "%s: you need to append a c/c++ compiler command as the first argument\n", __func__);
+    }
+}
+
+C_MAKE_DEF void
+c_make_command_append_default_compiler_flags(CMakeCommand *command, CMakeBuildType build_type)
+{
+    if ((command->count > 0) && command->items[0])
+    {
+        const char *compiler = command->items[0];
+
+        if (c_make_compiler_is_msvc(compiler))
+        {
+            c_make_command_append_msvc_compiler_flags(command);
+            c_make_command_append(command, "-nologo");
+
+            switch (build_type)
+            {
+                case CMakeBuildTypeDebug:
+                {
+                    c_make_command_append(command, "-Od", "-Z7");
+                } break;
+
+                case CMakeBuildTypeRelDebug:
+                {
+                    c_make_command_append(command, "-O2", "-Z7");
+                } break;
+
+                case CMakeBuildTypeRelease:
+                {
+                    c_make_command_append(command, "-O2", "-DNDEBUG");
+                } break;
+            }
+        }
+        else
+        {
+            switch (build_type)
+            {
+                case CMakeBuildTypeDebug:
+                {
+                    c_make_command_append(command, "-g");
+                } break;
+
+                case CMakeBuildTypeRelDebug:
+                {
+                    c_make_command_append(command, "-O2", "-g");
+                } break;
+
+                case CMakeBuildTypeRelease:
+                {
+                    c_make_command_append(command, "-O2", "-DNDEBUG");
+                } break;
+            }
+        }
+    }
+    else
+    {
+        c_make_log(CMakeLogLevelWarning, "%s: you need to append a c/c++ compiler command as the first argument\n", __func__);
+    }
+}
+
+C_MAKE_DEF void
+c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture)
+{
+    if ((command->count > 0) && command->items[0])
+    {
+        const char *compiler = command->items[0];
+
+        if (c_make_compiler_is_msvc(compiler))
+        {
+            c_make_command_append(command, "-link");
+            c_make_command_append_msvc_linker_flags(command, target_architecture);
+        }
+    }
+    else
+    {
+        c_make_log(CMakeLogLevelWarning, "%s: you need to append a c/c++ compiler command as the first argument\n", __func__);
     }
 }
 
@@ -2843,6 +2950,7 @@ int main(int argument_count, char **arguments)
         CMakeCommand command = { 0 };
 
         c_make_command_append(&command, compiler);
+        c_make_command_append_default_compiler_flags(&command, CMakeBuildTypeDebug);
 #ifdef C_MAKE_INCLUDE_PATH
         c_make_command_append(&command, "-I" CMakeStr(C_MAKE_INCLUDE_PATH));
         c_make_command_append(&command, "-DC_MAKE_INCLUDE_PATH=" CMakeStr(C_MAKE_INCLUDE_PATH));
@@ -2851,22 +2959,9 @@ int main(int argument_count, char **arguments)
         c_make_command_append_command_line(&command, CMakeStr(C_MAKE_COMPILER_FLAGS));
         c_make_command_append(&command, "-DC_MAKE_COMPILER_FLAGS=" CMakeStr(C_MAKE_COMPILER_FLAGS));
 #endif
-
-        char *exe_output_arg = 0;
-
-        if (c_make_compiler_is_msvc(compiler))
-        {
-            c_make_command_append_msvc_compiler_flags(&command);
-
-            exe_output_arg = c_make_c_string_concat("-Fe\"", c_make_executable_file, "\"");
-            c_make_command_append(&command, "-nologo", exe_output_arg, c_make_source_file, "-link");
-
-            c_make_command_append_msvc_linker_flags(&command, c_make_get_host_architecture());
-        }
-        else
-        {
-            c_make_command_append(&command, "-o", c_make_executable_file, c_make_source_file);
-        }
+        c_make_command_append_output(&command, c_make_executable_file);
+        c_make_command_append(&command, c_make_source_file);
+        c_make_command_append_default_linker_flags(&command, c_make_get_host_architecture());
 
         c_make_log(CMakeLogLevelInfo, "rebuild c_make\n");
 

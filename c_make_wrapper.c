@@ -51,6 +51,7 @@ int main(int argument_count, char **arguments)
                 }
 
                 c_make_command_append(&command, compiler);
+                c_make_command_append_default_compiler_flags(&command, CMakeBuildTypeDebug);
 
                 if (c_make_include_path)
                 {
@@ -62,8 +63,7 @@ int main(int argument_count, char **arguments)
 
                 CMakeString source_content = { 0 };
 
-                if (!c_make_compiler_is_msvc(compiler) &&
-                    c_make_read_entire_file(c_make_source_file, &source_content))
+                if (c_make_read_entire_file(c_make_source_file, &source_content))
                 {
                     bool had_msvc_flags = false;
                     bool had_compiler_flags = false;
@@ -131,18 +131,9 @@ int main(int argument_count, char **arguments)
 
                 c_make_memory_restore(memory_saved);
 
-                if (c_make_compiler_is_msvc(compiler))
-                {
-                    c_make_command_append_msvc_compiler_flags(&command);
-                    c_make_command_append(&command, "-nologo");
-                    c_make_command_append(&command, c_make_c_string_concat("-Fe", c_make_executable_file), c_make_source_file);
-                    c_make_command_append(&command, "-link");
-                    c_make_command_append_msvc_linker_flags(&command, c_make_get_target_architecture());
-                }
-                else
-                {
-                    c_make_command_append(&command, "-o", c_make_executable_file, c_make_source_file);
-                }
+                c_make_command_append_output(&command, c_make_executable_file);
+                c_make_command_append(&command, c_make_source_file);
+                c_make_command_append_default_linker_flags(&command, c_make_get_host_architecture());
 
                 c_make_log(CMakeLogLevelInfo, "bootstrap c_make from %s\n", c_make_source_file);
 
