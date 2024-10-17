@@ -25,7 +25,7 @@ C_MAKE_ENTRY()
                 c_make_command_append(&command, "-std=c99", "-Wall", "-Wextra", "-pedantic");
             }
 
-            c_make_command_append_output(&command, c_make_c_string_path_concat(c_make_get_build_path(), "c_make"));
+            c_make_command_append_output(&command, c_make_c_string_path_concat(c_make_get_build_path(), "c_make"), c_make_get_target_platform());
             c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "c_make_wrapper.c"));
             c_make_command_append_default_linker_flags(&command, c_make_get_target_architecture());
 

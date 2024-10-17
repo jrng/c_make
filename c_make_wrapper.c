@@ -51,7 +51,12 @@ int main(int argument_count, char **arguments)
                 }
 
                 c_make_command_append(&command, compiler);
-                c_make_command_append_default_compiler_flags(&command, CMakeBuildTypeDebug);
+
+                if (c_make_compiler_is_msvc(compiler))
+                {
+                    c_make_command_append_msvc_compiler_flags(&command);
+                    c_make_command_append(&command, "-nologo");
+                }
 
                 if (c_make_include_path)
                 {
@@ -131,7 +136,7 @@ int main(int argument_count, char **arguments)
 
                 c_make_memory_restore(memory_saved);
 
-                c_make_command_append_output(&command, c_make_executable_file);
+                c_make_command_append_output(&command, "c_make", c_make_get_host_platform());
                 c_make_command_append(&command, c_make_source_file);
                 c_make_command_append_default_linker_flags(&command, c_make_get_host_architecture());
 

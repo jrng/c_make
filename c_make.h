@@ -374,9 +374,9 @@ C_MAKE_DEF void c_make_memory_restore(size_t saved);
 C_MAKE_DEF void c_make_command_append_va(CMakeCommand *command, size_t count, ...);
 C_MAKE_DEF void c_make_command_append_slice(CMakeCommand *command, size_t count, const char **items);
 C_MAKE_DEF void c_make_command_append_command_line(CMakeCommand *command, const char *str);
-C_MAKE_DEF void c_make_command_append_output(CMakeCommand *command, const char *output_path);
+C_MAKE_DEF void c_make_command_append_output(CMakeCommand *command, const char *output_path, CMakePlatform platform);
 C_MAKE_DEF void c_make_command_append_default_compiler_flags(CMakeCommand *command, CMakeBuildType build_type);
-C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture);
+C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture architecture);
 C_MAKE_DEF CMakeString c_make_command_to_string(CMakeCommand command);
 
 C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
@@ -900,7 +900,7 @@ c_make_command_append_command_line(CMakeCommand *command, const char *str)
 }
 
 C_MAKE_DEF void
-c_make_command_append_output(CMakeCommand *command, const char *output_path)
+c_make_command_append_output(CMakeCommand *command, const char *output_path, CMakePlatform platform)
 {
     if ((command->count > 0) && command->items[0])
     {
@@ -917,6 +917,11 @@ c_make_command_append_output(CMakeCommand *command, const char *output_path)
         {
             arguments[0] = "-o";
             arguments[1] = output_path;
+
+            if (platform == CMakePlatformWindows)
+            {
+                arguments[1] = c_make_c_string_concat(output_path, ".exe");
+            }
         }
 
         c_make_command_append_slice(command, CMakeArrayCount(arguments), arguments);
@@ -985,7 +990,7 @@ c_make_command_append_default_compiler_flags(CMakeCommand *command, CMakeBuildTy
 }
 
 C_MAKE_DEF void
-c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture)
+c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture architecture)
 {
     if ((command->count > 0) && command->items[0])
     {
@@ -994,7 +999,7 @@ c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitect
         if (c_make_compiler_is_msvc(compiler))
         {
             c_make_command_append(command, "-link");
-            c_make_command_append_msvc_linker_flags(command, target_architecture);
+            c_make_command_append_msvc_linker_flags(command, architecture);
         }
     }
     else
@@ -1602,7 +1607,7 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
             if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (entry.cFileName[0] != '.'))
             {
                 int v0, v1, v2, v3;
-                int ret = swscanf(entry.cFileName, L"%d.%d.%d.%d", &v0, &v1, &v2, &v3);
+                int ret = swscanf_s(entry.cFileName, L"%d.%d.%d.%d", &v0, &v1, &v2, &v3);
 
                 if ((ret == 4) && ((v0 > best_v0) || ((v0 == best_v0) && ((v1 > best_v1) || ((v1 == best_v1) && ((v2 > best_v2) || ((v2 == best_v2) && (v3 > best_v3))))))))
                 {
@@ -2456,11 +2461,20 @@ c_make_has_slash_or_backslash(const char *path)
 C_MAKE_DEF const char *
 c_make_find_program(const char *program_name)
 {
+#if C_MAKE_PLATFORM_WINDOWS
+    char *PATH = 0;
+    size_t PATH_size = 0;
+
+    if (!_dupenv_s(&PATH, &PATH_size, "PATH"))
+    {
+        CMakeString paths = c_make_make_string(PATH, PATH_size);
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     char *PATH = getenv("PATH");
 
     if (PATH)
     {
         CMakeString paths = CMakeCString(PATH);
+#endif
 
         size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
         size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
@@ -2480,11 +2494,18 @@ c_make_find_program(const char *program_name)
             // TODO: is executable?
             if (c_make_file_exists(full_path))
             {
+#if C_MAKE_PLATFORM_WINDOWS
+                free(PATH);
+#endif
                 return full_path;
             }
 
             c_make_memory_set_used(&_c_make_context.public_memory, public_used);
         }
+
+#if C_MAKE_PLATFORM_WINDOWS
+        free(PATH);
+#endif
     }
 
     return 0;
@@ -2950,7 +2971,13 @@ int main(int argument_count, char **arguments)
         CMakeCommand command = { 0 };
 
         c_make_command_append(&command, compiler);
-        c_make_command_append_default_compiler_flags(&command, CMakeBuildTypeDebug);
+
+        if (c_make_compiler_is_msvc(compiler))
+        {
+            c_make_command_append_msvc_compiler_flags(&command);
+            c_make_command_append(&command, "-nologo");
+        }
+
 #ifdef C_MAKE_INCLUDE_PATH
         c_make_command_append(&command, "-I" CMakeStr(C_MAKE_INCLUDE_PATH));
         c_make_command_append(&command, "-DC_MAKE_INCLUDE_PATH=" CMakeStr(C_MAKE_INCLUDE_PATH));
@@ -2959,7 +2986,7 @@ int main(int argument_count, char **arguments)
         c_make_command_append_command_line(&command, CMakeStr(C_MAKE_COMPILER_FLAGS));
         c_make_command_append(&command, "-DC_MAKE_COMPILER_FLAGS=" CMakeStr(C_MAKE_COMPILER_FLAGS));
 #endif
-        c_make_command_append_output(&command, c_make_executable_file);
+        c_make_command_append_output(&command, "c_make", c_make_get_host_platform());
         c_make_command_append(&command, c_make_source_file);
         c_make_command_append_default_linker_flags(&command, c_make_get_host_architecture());
 
