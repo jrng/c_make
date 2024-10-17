@@ -85,7 +85,9 @@ C_MAKE_ENTRY()
             c_make_command_append(&command, target_c_compiler);
             c_make_command_append_command_line(&command, c_make_get_target_c_flags());
             c_make_command_append_default_compiler_flags(&command, c_make_get_build_type());
-            c_make_command_append_output(&command, c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"));
+            c_make_command_append_output(&command,
+                                         c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"),
+                                         c_make_get_target_platform());
             c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
             c_make_command_append_default_linker_flags(&command, c_make_get_target_architecture());
 
