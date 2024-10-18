@@ -426,6 +426,7 @@ C_MAKE_DEF bool c_make_rename_file(const char *old_file_name, const char *new_fi
 C_MAKE_DEF bool c_make_delete_file(const char *file_name);
 
 C_MAKE_DEF bool c_make_has_slash_or_backslash(const char *path);
+C_MAKE_DEF CMakeString c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name);
 C_MAKE_DEF const char *c_make_find_program(const char *program_name);
 
 C_MAKE_DEF CMakeString c_make_string_concat_va(size_t count, ...);
@@ -594,7 +595,7 @@ DECLARE_INTERFACE_(ISetupConfiguration, IUnknown)
 };
 
 static inline LPWSTR
-c_make_utf8_to_utf16(CMakeMemory *memory, const char *utf8_str)
+c_make_c_string_utf8_to_utf16(CMakeMemory *memory, const char *utf8_str)
 {
     size_t utf8_length = c_make_get_c_string_length(utf8_str);
     size_t utf16_size = 2 * (utf8_length + 1);
@@ -604,13 +605,36 @@ c_make_utf8_to_utf16(CMakeMemory *memory, const char *utf8_str)
 }
 
 static inline const char *
-c_make_c_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_str)
+c_make_c_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_string_data, DWORD utf16_string_char_count)
 {
-    size_t utf16_length = wcslen(utf16_str);
-    size_t utf8_size = 4 * (utf16_length + 1);
-    char *utf8_str = (char *) c_make_memory_allocate(memory, utf8_size);
-    WideCharToMultiByte(CP_UTF8, 0, utf16_str, -1, utf8_str, utf8_size, 0, 0);
-    return utf8_str;
+    char *utf8_string_data = 0;
+
+    if (utf16_string_char_count > 0)
+    {
+        size_t utf8_string_count = 4 * utf16_string_char_count + 1;
+        utf8_string_data = (char *) c_make_memory_allocate(memory, utf8_string_count);
+        utf8_string_count = WideCharToMultiByte(CP_UTF8, 0, utf16_string_data, utf16_string_char_count,
+                                                utf8_string_data, utf8_string_count, 0, 0);
+        utf8_string_data[utf8_string_count] = 0;
+    }
+
+    return utf8_string_data;
+}
+
+static inline CMakeString
+c_make_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_string_data, DWORD utf16_string_char_count)
+{
+    CMakeString utf8_string = { 0 };
+
+    if (utf16_string_char_count > 0)
+    {
+        utf8_string.count = 4 * utf16_string_char_count;
+        utf8_string.data  = (char *) c_make_memory_allocate(memory, utf8_string.count);
+        utf8_string.count = WideCharToMultiByte(CP_UTF8, 0, utf16_string_data, utf16_string_char_count,
+                                                utf8_string.data, utf8_string.count, 0, 0);
+    }
+
+    return utf8_string;
 }
 
 #endif
@@ -1616,7 +1640,7 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
                     best_v1 = v1;
                     best_v2 = v2;
                     best_v3 = v3;
-                    best_version = c_make_c_string_utf16_to_utf8(&_c_make_context.public_memory, entry.cFileName);
+                    best_version = c_make_c_string_utf16_to_utf8(&_c_make_context.public_memory, entry.cFileName, wcslen(entry.cFileName));
                 }
             }
 
@@ -1636,7 +1660,7 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
         return false;
     }
 
-    windows_sdk->root_path = c_make_c_string_utf16_to_utf8(&_c_make_context.public_memory, windows_sdk_root_path);
+    windows_sdk->root_path = c_make_c_string_utf16_to_utf8(&_c_make_context.public_memory, windows_sdk_root_path, (root_length - 1) / 2);
     windows_sdk->version = best_version;
 
     return true;
@@ -1953,7 +1977,7 @@ c_make_needs_rebuild(const char *output_file, size_t input_file_count, const cha
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, output_file);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, output_file);
     HANDLE file = CreateFile(utf16_file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
@@ -1982,7 +2006,7 @@ c_make_needs_rebuild(const char *output_file, size_t input_file_count, const cha
     {
         size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-        utf16_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, input_files[i]);
+        utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, input_files[i]);
         file = CreateFile(utf16_file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
         c_make_memory_set_used(&_c_make_context.private_memory, private_used);
@@ -2055,7 +2079,7 @@ c_make_file_exists(const char *file_name)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
     DWORD file_attributes = GetFileAttributes(utf16_file_name);
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
@@ -2080,7 +2104,7 @@ c_make_directory_exists(const char *directory_name)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_directory_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
     DWORD file_attributes = GetFileAttributes(utf16_directory_name);
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
@@ -2105,7 +2129,7 @@ c_make_create_directory(const char *directory_name)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_directory_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
 
     if (!CreateDirectory(utf16_directory_name, 0))
     {
@@ -2143,7 +2167,7 @@ c_make_read_entire_file(const char *file_name, CMakeString *content)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
     HANDLE file = CreateFile(utf16_file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
@@ -2237,7 +2261,7 @@ c_make_write_entire_file(const char *file_name, CMakeString content)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
     HANDLE file = CreateFile(utf16_file_name, GENERIC_WRITE, 0, 0,
                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 
@@ -2298,8 +2322,8 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_src_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, src_file_name);
-    LPWSTR utf16_dst_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, dst_file_name);
+    LPWSTR utf16_src_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, src_file_name);
+    LPWSTR utf16_dst_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, dst_file_name);
 
     if (!CopyFile(utf16_src_file_name, utf16_dst_file_name, FALSE))
     {
@@ -2383,8 +2407,8 @@ c_make_rename_file(const char *old_file_name, const char *new_file_name)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_old_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, old_file_name);
-    LPWSTR utf16_new_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, new_file_name);
+    LPWSTR utf16_old_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, old_file_name);
+    LPWSTR utf16_new_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, new_file_name);
 
     bool result =
         MoveFileEx(utf16_old_file_name, utf16_new_file_name, MOVEFILE_REPLACE_EXISTING) ? true : false;
@@ -2408,7 +2432,7 @@ c_make_delete_file(const char *file_name)
 #if C_MAKE_PLATFORM_WINDOWS
     size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
 
-    LPWSTR utf16_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
 
     bool result = DeleteFile(utf16_file_name) ? true : false;
 
@@ -2458,55 +2482,76 @@ c_make_has_slash_or_backslash(const char *path)
     }
 }
 
+C_MAKE_DEF CMakeString
+c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name)
+{
+    CMakeString result = { 0 };
+
+#if C_MAKE_PLATFORM_WINDOWS
+    wchar_t *utf16_variable_name = c_make_c_string_utf8_to_utf16(memory, variable_name);
+    DWORD variable_size = GetEnvironmentVariable(utf16_variable_name, 0, 0);
+
+    if (variable_size > 0)
+    {
+        size_t memory_used = c_make_memory_get_used(memory);
+        wchar_t *variable = (wchar_t *) c_make_memory_allocate(memory, sizeof(wchar_t) * variable_size);
+        DWORD ret = GetEnvironmentVariable(utf16_variable_name, variable, variable_size);
+
+        if ((ret > 0) && (ret < variable_size))
+        {
+            result = c_make_string_utf16_to_utf8(memory, variable, ret);
+        }
+        else
+        {
+            c_make_memory_set_used(memory, memory_used);
+        }
+    }
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    (void) memory;
+
+    char *variable = getenv(variable_name);
+
+    if (variable)
+    {
+        result = CMakeCString(variable);
+    }
+#endif
+
+    return result;
+}
+
 C_MAKE_DEF const char *
 c_make_find_program(const char *program_name)
 {
+    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeString paths = c_make_get_environment_variable(&_c_make_context.private_memory, "PATH");
+
+    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+    size_t inner_private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+    while (paths.count)
+    {
 #if C_MAKE_PLATFORM_WINDOWS
-    char *PATH = 0;
-    size_t PATH_size = 0;
-
-    if (!_dupenv_s(&PATH, &PATH_size, "PATH"))
-    {
-        CMakeString paths = c_make_make_string(PATH, PATH_size);
+        char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ';'));
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
-    char *PATH = getenv("PATH");
-
-    if (PATH)
-    {
-        CMakeString paths = CMakeCString(PATH);
+        char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ':'));
 #endif
 
-        size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-        size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+        char *full_path = c_make_c_string_path_concat(path, program_name);
 
-        while (paths.count)
+        c_make_memory_set_used(&_c_make_context.private_memory, inner_private_used);
+
+        // TODO: is executable?
+        if (c_make_file_exists(full_path))
         {
-#if C_MAKE_PLATFORM_WINDOWS
-            char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ';'));
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
-            char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ':'));
-#endif
-
-            char *full_path = c_make_c_string_path_concat(path, program_name);
-
             c_make_memory_set_used(&_c_make_context.private_memory, private_used);
-
-            // TODO: is executable?
-            if (c_make_file_exists(full_path))
-            {
-#if C_MAKE_PLATFORM_WINDOWS
-                free(PATH);
-#endif
-                return full_path;
-            }
-
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+            return full_path;
         }
 
-#if C_MAKE_PLATFORM_WINDOWS
-        free(PATH);
-#endif
+        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
     }
+
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
     return 0;
 }
@@ -2901,7 +2946,7 @@ int main(int argument_count, char **arguments)
 
     if (ret > 0)
     {
-        executable_path = CMakeCString(c_make_c_string_utf16_to_utf8(&_c_make_context.private_memory, module_file_name));
+        executable_path = CMakeCString(c_make_c_string_utf16_to_utf8(&_c_make_context.private_memory, module_file_name, ret));
         c_make_string_split_right(&executable_path, '\\');
     }
     else
@@ -3031,71 +3076,70 @@ int main(int argument_count, char **arguments)
             return 2;
         }
 
-        char *ARCH = getenv("ARCH");
+        size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
 
-        if (ARCH)
         {
-            CMakeString ARCH_str = CMakeCString(ARCH);
+            CMakeString ARCH = c_make_get_environment_variable(&_c_make_context.public_memory, "ARCH");
 
-            if (c_make_strings_are_equal(ARCH_str, CMakeStringLiteral("arm64")))
+            if (c_make_strings_are_equal(ARCH, CMakeStringLiteral("arm64")))
             {
                 c_make_config_set("target_architecture", "aarch64");
-            }
-        }
-
-        char *CC = getenv("CC");
-
-        if (CC)
-        {
-            size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-
-            CMakeString CC_str = CMakeCString(CC);
-            const char *target_c_compiler = c_make_string_to_c_string(&_c_make_context.public_memory, c_make_string_split_left(&CC_str, ' '));
-
-            if (!c_make_has_slash_or_backslash(target_c_compiler))
-            {
-                target_c_compiler = c_make_find_program(target_c_compiler);
-            }
-
-            if (target_c_compiler)
-            {
-                c_make_config_set("target_c_compiler", target_c_compiler);
-            }
-
-            CC_str = c_make_string_trim(CC_str);
-
-            if (CC_str.count)
-            {
-                c_make_config_set("target_c_flags", c_make_string_to_c_string(&_c_make_context.public_memory, CC_str));
             }
 
             c_make_memory_set_used(&_c_make_context.public_memory, public_used);
         }
 
-        char *CXX = getenv("CXX");
-
-        if (CXX)
         {
-            size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+            CMakeString CC = c_make_get_environment_variable(&_c_make_context.public_memory, "CC");
 
-            CMakeString CXX_str = CMakeCString(CXX);
-            const char *target_cpp_compiler = c_make_string_to_c_string(&_c_make_context.public_memory, c_make_string_split_left(&CXX_str, ' '));
-
-            if (!c_make_has_slash_or_backslash(target_cpp_compiler))
+            if (CC.count)
             {
-                target_cpp_compiler = c_make_find_program(target_cpp_compiler);
+                const char *target_c_compiler = c_make_string_to_c_string(&_c_make_context.public_memory, c_make_string_split_left(&CC, ' '));
+
+                if (!c_make_has_slash_or_backslash(target_c_compiler))
+                {
+                    target_c_compiler = c_make_find_program(target_c_compiler);
+                }
+
+                if (target_c_compiler)
+                {
+                    c_make_config_set("target_c_compiler", target_c_compiler);
+                }
+
+                CC = c_make_string_trim(CC);
+
+                if (CC.count)
+                {
+                    c_make_config_set("target_c_flags", c_make_string_to_c_string(&_c_make_context.public_memory, CC));
+                }
             }
 
-            if (target_cpp_compiler)
-            {
-                c_make_config_set("target_cpp_compiler", target_cpp_compiler);
-            }
+            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        }
 
-            CXX_str = c_make_string_trim(CXX_str);
+        {
+            CMakeString CXX = c_make_get_environment_variable(&_c_make_context.public_memory, "CXX");
 
-            if (CXX_str.count)
+            if (CXX.count)
             {
-                c_make_config_set("target_cpp_flags", c_make_string_to_c_string(&_c_make_context.public_memory, CXX_str));
+                const char *target_cpp_compiler = c_make_string_to_c_string(&_c_make_context.public_memory, c_make_string_split_left(&CXX, ' '));
+
+                if (!c_make_has_slash_or_backslash(target_cpp_compiler))
+                {
+                    target_cpp_compiler = c_make_find_program(target_cpp_compiler);
+                }
+
+                if (target_cpp_compiler)
+                {
+                    c_make_config_set("target_cpp_compiler", target_cpp_compiler);
+                }
+
+                CXX = c_make_string_trim(CXX);
+
+                if (CXX.count)
+                {
+                    c_make_config_set("target_cpp_flags", c_make_string_to_c_string(&_c_make_context.public_memory, CXX));
+                }
             }
 
             c_make_memory_set_used(&_c_make_context.public_memory, public_used);
