@@ -360,6 +360,8 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
     return name;
 }
 
+C_MAKE_DEF void c_make_set_failed(bool failed);
+C_MAKE_DEF bool c_make_get_failed(void);
 C_MAKE_DEF void c_make_log(CMakeLogLevel log_level, const char *format, ...);
 
 C_MAKE_DEF void *c_make_memory_allocate(CMakeMemory *memory, size_t size);
@@ -638,6 +640,18 @@ c_make_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_string_dat
 }
 
 #endif
+
+C_MAKE_DEF void
+c_make_set_failed(bool failed)
+{
+    _c_make_context.did_fail = failed;
+}
+
+C_MAKE_DEF bool
+c_make_get_failed(void)
+{
+    return _c_make_context.did_fail;
+}
 
 C_MAKE_DEF void
 c_make_log(CMakeLogLevel log_level, const char *format, ...)
