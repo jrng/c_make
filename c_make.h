@@ -231,10 +231,18 @@ typedef struct CMakeConfig
     CMakeConfigEntry *items;
 } CMakeConfig;
 
+typedef struct CMakeProcessGroup
+{
+    size_t count;
+    size_t allocated;
+    CMakeProcessId *items;
+} CMakeProcessGroup;
+
 typedef struct CMakeContext
 {
     bool verbose;
     bool did_fail;
+    bool sequential;
 
     CMakePlatform target_platform;
     CMakeArchitecture target_architecture;
@@ -246,6 +254,8 @@ typedef struct CMakeContext
     CMakeConfig config;
     CMakeMemory private_memory;
     CMakeMemory public_memory;
+
+    CMakeProcessGroup process_group;
 
     bool shell_initialized;
 
@@ -437,8 +447,11 @@ C_MAKE_DEF char *c_make_c_string_concat_va(size_t count, ...);
 C_MAKE_DEF char *c_make_c_string_path_concat_va(size_t count, ...);
 
 C_MAKE_DEF CMakeProcessId c_make_command_run(CMakeCommand command);
+C_MAKE_DEF CMakeProcessId c_make_command_run_and_reset(CMakeCommand *command);
 C_MAKE_DEF bool c_make_process_wait(CMakeProcessId process_id);
+C_MAKE_DEF bool c_make_command_run_and_reset_and_wait(CMakeCommand *command);
 C_MAKE_DEF bool c_make_command_run_and_wait(CMakeCommand command);
+C_MAKE_DEF bool c_make_process_wait_for_all(void);
 
 static inline bool
 c_make_compiler_is_msvc(const char *compiler)
@@ -2688,6 +2701,11 @@ c_make_command_run(CMakeCommand command)
         return CMakeInvalidProcessId;
     }
 
+    if (_c_make_context.sequential)
+    {
+        c_make_process_wait_for_all();
+    }
+
     if (_c_make_context.verbose)
     {
         size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
@@ -2697,6 +2715,8 @@ c_make_command_run(CMakeCommand command)
 
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
     }
+
+    CMakeProcessId process_id;
 
 #if C_MAKE_PLATFORM_WINDOWS
     STARTUPINFO start_info = { 0 };
@@ -2737,7 +2757,7 @@ c_make_command_run(CMakeCommand command)
 
     CloseHandle(process_info.hThread);
 
-    return process_info.hProcess;
+    process_id = process_info.hProcess;
 #else
     char **command_line = (char **) c_make_memory_allocate(&_c_make_context.private_memory, (command.count + 1) * sizeof(char *));
 
@@ -2772,8 +2792,32 @@ c_make_command_run(CMakeCommand command)
         return CMakeInvalidProcessId;
     }
 
-    return pid;
+    process_id = pid;
 #endif
+
+    if (_c_make_context.process_group.count == _c_make_context.process_group.allocated)
+    {
+        size_t old_count = _c_make_context.process_group.allocated;
+        _c_make_context.process_group.allocated += 16;
+        _c_make_context.process_group.items =
+            (CMakeProcessId *) c_make_memory_reallocate(&_c_make_context.private_memory,
+                                                        _c_make_context.process_group.items,
+                                                        old_count * sizeof(*_c_make_context.process_group.items),
+                                                        _c_make_context.process_group.allocated * sizeof(*_c_make_context.process_group.items));
+    }
+
+    _c_make_context.process_group.items[_c_make_context.process_group.count] = process_id;
+    _c_make_context.process_group.count += 1;
+
+    return process_id;
+}
+
+C_MAKE_DEF CMakeProcessId
+c_make_command_run_and_reset(CMakeCommand *command)
+{
+    CMakeProcessId process_id = c_make_command_run(*command);
+    command->count = 0;
+    return process_id;
 }
 
 C_MAKE_DEF bool
@@ -2853,7 +2897,25 @@ c_make_process_wait(CMakeProcessId process_id)
     }
 #endif
 
+    for (size_t i = 0; i < _c_make_context.process_group.count; i += 1)
+    {
+        if (_c_make_context.process_group.items[i] == process_id)
+        {
+            _c_make_context.process_group.count -= 1;
+            _c_make_context.process_group.items[i] = _c_make_context.process_group.items[_c_make_context.process_group.count];
+            break;
+        }
+    }
+
     return result;
+}
+
+C_MAKE_DEF bool
+c_make_command_run_and_reset_and_wait(CMakeCommand *command)
+{
+    CMakeProcessId process_id = c_make_command_run(*command);
+    command->count = 0;
+    return c_make_process_wait(process_id);
 }
 
 C_MAKE_DEF bool
@@ -2863,12 +2925,25 @@ c_make_command_run_and_wait(CMakeCommand command)
     return c_make_process_wait(process_id);
 }
 
+C_MAKE_DEF bool
+c_make_process_wait_for_all(void)
+{
+    bool result = true;
+
+    while (_c_make_context.process_group.count)
+    {
+        result = result & c_make_process_wait(_c_make_context.process_group.items[0]);
+    }
+
+    return result;
+}
+
 #if !defined(C_MAKE_NO_ENTRY_POINT)
 
 static void
 print_help(const char *program_name)
 {
-    fprintf(stderr, "usage: %s <command> <build-directory> [--verbose] [<key>=\"<value>\" ...]\n", program_name);
+    fprintf(stderr, "usage: %s <command> <build-directory> [--verbose] [--sequential] [<key>=\"<value>\" ...]\n", program_name);
     fprintf(stderr, "\n");
     fprintf(stderr, "commands:\n");
     fprintf(stderr, "    setup                Create and configure a new build directory.\n");
@@ -2878,6 +2953,8 @@ print_help(const char *program_name)
     fprintf(stderr, "options:\n");
     fprintf(stderr, "    --verbose            This will print out the configuration and all the\n");
     fprintf(stderr, "                         command lines that are executed.\n");
+    fprintf(stderr, "    --sequential         This will make c_make_command_run wait for all running commands to finish.\n");
+    fprintf(stderr, "                         This effectively sequentializes the build process.\n\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Every build directory has a configuration which is stored in 'c_make.txt'.\n");
     fprintf(stderr, "It consists of all the options that define a build. All options can be set\n");
@@ -2995,6 +3072,10 @@ int main(int argument_count, char **arguments)
         if (c_make_strings_are_equal(argument, CMakeStringLiteral("--verbose")))
         {
             _c_make_context.verbose = true;
+        }
+        else if (c_make_strings_are_equal(argument, CMakeStringLiteral("--sequential")))
+        {
+            _c_make_context.sequential = true;
         }
     }
 
@@ -3190,6 +3271,8 @@ int main(int argument_count, char **arguments)
 
         _c_make_entry_(CMakeTargetSetup);
 
+        c_make_process_wait_for_all();
+
         c_make_config_set_if_not_exists("target_platform", c_make_get_platform_name(c_make_get_host_platform()));
         c_make_config_set_if_not_exists("target_architecture", c_make_get_architecture_name(c_make_get_host_architecture()));
         c_make_config_set_if_not_exists("build_type", "debug");
@@ -3276,6 +3359,8 @@ int main(int argument_count, char **arguments)
         {
             _c_make_entry_(CMakeTargetInstall);
         }
+
+        c_make_process_wait_for_all();
     }
 
     return _c_make_context.did_fail ? 1 : 0;
