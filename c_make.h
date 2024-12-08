@@ -413,6 +413,8 @@ C_MAKE_DEF const char *c_make_get_build_path(void);
 C_MAKE_DEF const char *c_make_get_source_path(void);
 C_MAKE_DEF const char *c_make_get_install_prefix(void);
 
+C_MAKE_DEF const char *c_make_get_host_ar(void);
+C_MAKE_DEF const char *c_make_get_target_ar(void);
 C_MAKE_DEF const char *c_make_get_host_c_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_c_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_c_flags(void);
@@ -422,6 +424,7 @@ C_MAKE_DEF const char *c_make_get_target_cpp_flags(void);
 
 C_MAKE_DEF bool c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install);
 C_MAKE_DEF bool c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk);
+C_MAKE_DEF const char *c_make_find_msvc_library_manager(CMakeArchitecture target_architecture);
 C_MAKE_DEF const char *c_make_find_msvc_compiler(CMakeArchitecture target_architecture);
 C_MAKE_DEF void c_make_command_append_msvc_compiler_flags(CMakeCommand *command);
 C_MAKE_DEF void c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture);
@@ -459,6 +462,20 @@ C_MAKE_DEF bool c_make_process_wait(CMakeProcessId process_id);
 C_MAKE_DEF bool c_make_command_run_and_reset_and_wait(CMakeCommand *command);
 C_MAKE_DEF bool c_make_command_run_and_wait(CMakeCommand command);
 C_MAKE_DEF bool c_make_process_wait_for_all(void);
+
+static inline bool
+c_make_is_msvc_library_manager(const char *cmd)
+{
+    if (cmd)
+    {
+        CMakeString cmd_path = CMakeCString(cmd);
+        CMakeString cmd_name = c_make_string_split_right(&cmd_path, '\\');
+
+        return c_make_strings_are_equal(cmd_name, CMakeStringLiteral("lib.exe"));
+    }
+
+    return false;
+}
 
 static inline bool
 c_make_compiler_is_msvc(const char *compiler)
@@ -1325,6 +1342,75 @@ c_make_get_install_prefix(void)
 }
 
 C_MAKE_DEF const char *
+c_make_get_host_ar(void)
+{
+    const char *result = 0;
+    CMakeConfigValue value = c_make_config_get("host_ar");
+
+    if (value.is_valid)
+    {
+        result = value.val;
+    }
+    else
+    {
+#if C_MAKE_PLATFORM_WINDOWS
+#  ifdef __MINGW32__
+        result = "x86_64-w64-mingw32-ar";
+#  else
+        result = "lib.exe";
+#  endif
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
+        result = "ar";
+#elif C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_MACOS
+        result = "ar";
+#elif C_MAKE_PLATFORM_WEB
+        result = "ar";
+#endif
+    }
+
+    if (!c_make_has_slash_or_backslash(result))
+    {
+        result = c_make_find_program(result);
+    }
+
+#if C_MAKE_PLATFORM_WINDOWS
+    if (!result)
+    {
+        result = c_make_find_msvc_library_manager(c_make_get_host_architecture());
+    }
+#endif
+
+    return result;
+}
+
+C_MAKE_DEF const char *
+c_make_get_target_ar(void)
+{
+    const char *result = 0;
+    CMakeConfigValue value = c_make_config_get("target_ar");
+
+    if (value.is_valid)
+    {
+        result = value.val;
+
+        if (!c_make_has_slash_or_backslash(result))
+        {
+            result = c_make_find_program(result);
+        }
+    }
+    else
+    {
+#if C_MAKE_PLATFORM_WINDOWS
+        result = c_make_find_msvc_library_manager(c_make_get_target_architecture());
+#else
+        result = c_make_get_host_ar();
+#endif
+    }
+
+    return result;
+}
+
+C_MAKE_DEF const char *
 c_make_get_host_c_compiler(void)
 {
     const char *result = 0;
@@ -1702,6 +1788,28 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
     (void) windows_sdk;
     return false;
 #endif
+}
+
+C_MAKE_DEF const char *
+c_make_find_msvc_library_manager(CMakeArchitecture target_architecture)
+{
+    const char *result = 0;
+    CMakeWindowsSoftwarePackage visual_studio_install;
+
+    if (c_make_find_visual_studio(&visual_studio_install))
+    {
+        const char *arch = "x64";
+
+        if (target_architecture == CMakeArchitectureAarch64)
+        {
+            arch = "arm64";
+        }
+
+        result = c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
+                                             visual_studio_install.version, "bin", "Hostx64", arch, "lib.exe");
+    }
+
+    return result;
 }
 
 C_MAKE_DEF const char *
@@ -3009,12 +3117,14 @@ print_help(const char *program_name)
     fprintf(stderr, "\n");
     fprintf(stderr, "    build_type           Build type. Either 'debug', 'reldebug' or 'release'.\n");
     fprintf(stderr, "                         Default: 'debug'\n");
+    fprintf(stderr, "    host_ar              Path to or name of the host archive/library program.\n");
     fprintf(stderr, "    host_c_compiler      Path to or name of the host c compiler.\n");
     fprintf(stderr, "    host_cpp_compiler    Path to or name of the host c++ compiler.\n");
     fprintf(stderr, "    install_prefix       Install prefix. Defaults to '/usr/local'.\n");
     fprintf(stderr, "    target_architecture  Architecture of the target. Either 'amd64', 'aarch64',\n");
     fprintf(stderr, "                         'riscv64' or 'wasm32'. The default is the host\n");
     fprintf(stderr, "                         architecture.\n");
+    fprintf(stderr, "    target_ar            Path to or name of the target archive/library program.\n");
     fprintf(stderr, "    target_c_compiler    Path to or name of the target c compiler.\n");
     fprintf(stderr, "    target_c_flags       Flags for the target c build.\n");
     fprintf(stderr, "    target_cpp_compiler  Path to or name of the target c++ compiler.\n");
@@ -3228,6 +3338,27 @@ int main(int argument_count, char **arguments)
         }
 
         {
+            CMakeString AR = c_make_get_environment_variable(&_c_make_context.public_memory, "AR");
+
+            if (AR.count)
+            {
+                const char *target_ar = c_make_string_to_c_string(&_c_make_context.public_memory, AR);
+
+                if (!c_make_has_slash_or_backslash(target_ar))
+                {
+                    target_ar = c_make_find_program(target_ar);
+                }
+
+                if (target_ar)
+                {
+                    c_make_config_set("target_ar", target_ar);
+                }
+            }
+
+            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        }
+
+        {
             CMakeString CC = c_make_get_environment_variable(&_c_make_context.public_memory, "CC");
 
             if (CC.count)
@@ -3326,6 +3457,22 @@ int main(int argument_count, char **arguments)
         {
             if (c_make_get_target_platform() == CMakePlatformWindows)
             {
+                CMakeConfigValue target_ar = c_make_config_get("target_ar");
+
+                if (!target_ar.is_valid)
+                {
+                    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+                    const char *ar = c_make_find_program("x86_64-w64-mingw32-ar");
+
+                    if (ar)
+                    {
+                        c_make_config_set("target_ar", ar);
+                    }
+
+                    c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+                }
+
                 CMakeConfigValue target_c_compiler = c_make_config_get("target_c_compiler");
 
                 if (!target_c_compiler.is_valid)
