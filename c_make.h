@@ -231,11 +231,18 @@ typedef struct CMakeConfig
     CMakeConfigEntry *items;
 } CMakeConfig;
 
+typedef struct CMakeProcess
+{
+    CMakeProcessId id;
+    bool exited;
+    bool succeeded;
+} CMakeProcess;
+
 typedef struct CMakeProcessGroup
 {
     size_t count;
     size_t allocated;
-    CMakeProcessId *items;
+    CMakeProcess *items;
 } CMakeProcessGroup;
 
 typedef struct CMakeContext
@@ -2693,17 +2700,113 @@ c_make_c_string_path_concat_va(size_t count, ...)
     return result;
 }
 
+static size_t
+__c_make_process_wait(CMakeProcessId process_id)
+{
+    if (process_id == CMakeInvalidProcessId)
+    {
+        _c_make_context.did_fail = true;
+        return -1;
+    }
+
+    size_t index = _c_make_context.process_group.count;
+
+    for (size_t i = 0; i < _c_make_context.process_group.count; i += 1)
+    {
+        if (_c_make_context.process_group.items[i].id == process_id)
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if (index < _c_make_context.process_group.count)
+    {
+        CMakeProcess *process = _c_make_context.process_group.items + index;
+
+        if (!process->exited)
+        {
+            process->exited = true;
+
+#if C_MAKE_PLATFORM_WINDOWS
+            DWORD wait_result = WaitForSingleObject(process_id, INFINITE);
+
+            if (wait_result == WAIT_FAILED)
+            {
+                _c_make_context.did_fail = true;
+                process->succeeded = false;
+                // TODO: log error
+            }
+            else
+            {
+                DWORD exit_code = 0;
+
+                if (!GetExitCodeProcess(process_id, &exit_code))
+                {
+                    _c_make_context.did_fail = true;
+                    process->succeeded = false;
+                    // TODO: log error
+                }
+
+                if (exit_code != 0)
+                {
+                    _c_make_context.did_fail = true;
+                    process->succeeded = false;
+                    // TODO: log that the process has exited with an error code
+                    // TODO: What to return here? false or true?
+                }
+
+                CloseHandle(process_id);
+            }
+#else
+            for (;;)
+            {
+                int status;
+
+                if (waitpid(process_id, &status, 0) < 0)
+                {
+                    _c_make_context.did_fail = true;
+                    process->succeeded = false;
+                    // TODO: log error
+                    break;
+                }
+
+                if (WIFEXITED(status))
+                {
+                    int exit_code = WEXITSTATUS(status);
+
+                    if (exit_code != 0)
+                    {
+                        _c_make_context.did_fail = true;
+                        process->succeeded = false;
+                        // TODO: log that the process has exited with an error code
+                        // TODO: What to return here? false or true?
+                    }
+
+                    break;
+                }
+
+                if (WIFSIGNALED(status))
+                {
+                    _c_make_context.did_fail = true;
+                    process->succeeded = false;
+                    // TODO: log the signal that terminated the child
+                    break;
+                }
+            }
+#endif
+        }
+    }
+
+    return index;
+}
+
 C_MAKE_DEF CMakeProcessId
 c_make_command_run(CMakeCommand command)
 {
     if (command.count == 0)
     {
         return CMakeInvalidProcessId;
-    }
-
-    if (_c_make_context.sequential)
-    {
-        c_make_process_wait_for_all();
     }
 
     if (_c_make_context.verbose)
@@ -2800,14 +2903,23 @@ c_make_command_run(CMakeCommand command)
         size_t old_count = _c_make_context.process_group.allocated;
         _c_make_context.process_group.allocated += 16;
         _c_make_context.process_group.items =
-            (CMakeProcessId *) c_make_memory_reallocate(&_c_make_context.private_memory,
-                                                        _c_make_context.process_group.items,
-                                                        old_count * sizeof(*_c_make_context.process_group.items),
-                                                        _c_make_context.process_group.allocated * sizeof(*_c_make_context.process_group.items));
+            (CMakeProcess *) c_make_memory_reallocate(&_c_make_context.private_memory,
+                                                      _c_make_context.process_group.items,
+                                                      old_count * sizeof(*_c_make_context.process_group.items),
+                                                      _c_make_context.process_group.allocated * sizeof(*_c_make_context.process_group.items));
     }
 
-    _c_make_context.process_group.items[_c_make_context.process_group.count] = process_id;
+    CMakeProcess *process = _c_make_context.process_group.items + _c_make_context.process_group.count;
     _c_make_context.process_group.count += 1;
+
+    process->id = process_id;
+    process->exited = false;
+    process->succeeded = true;
+
+    if (_c_make_context.sequential)
+    {
+        __c_make_process_wait(process_id);
+    }
 
     return process_id;
 }
@@ -2823,91 +2935,22 @@ c_make_command_run_and_reset(CMakeCommand *command)
 C_MAKE_DEF bool
 c_make_process_wait(CMakeProcessId process_id)
 {
-    if (process_id == CMakeInvalidProcessId)
+    size_t index = __c_make_process_wait(process_id);
+
+    if (index < _c_make_context.process_group.count)
     {
-        _c_make_context.did_fail = true;
-        return false;
+        CMakeProcess *process = _c_make_context.process_group.items + index;
+
+        assert(process->exited);
+        bool succeeded = process->succeeded;
+
+        _c_make_context.process_group.count -= 1;
+        _c_make_context.process_group.items[index] = _c_make_context.process_group.items[_c_make_context.process_group.count];
+
+        return succeeded;
     }
 
-    bool result = true;
-
-#if C_MAKE_PLATFORM_WINDOWS
-    DWORD wait_result = WaitForSingleObject(process_id, INFINITE);
-
-    if (wait_result == WAIT_FAILED)
-    {
-        _c_make_context.did_fail = true;
-        // TODO: log error
-        return false;
-    }
-
-    DWORD exit_code = 0;
-
-    if (!GetExitCodeProcess(process_id, &exit_code))
-    {
-        _c_make_context.did_fail = true;
-        // TODO: log error
-        result = false;
-    }
-
-    if (exit_code != 0)
-    {
-        _c_make_context.did_fail = true;
-        // TODO: log that the process has exited with an error code
-        // TODO: What to return here? false or true?
-        result = false;
-    }
-
-    CloseHandle(process_id);
-#else
-    for (;;)
-    {
-        int status;
-
-        if (waitpid(process_id, &status, 0) < 0)
-        {
-            _c_make_context.did_fail = true;
-            // TODO: log error
-            result = false;
-            break;
-        }
-
-        if (WIFEXITED(status))
-        {
-            int exit_code = WEXITSTATUS(status);
-
-            if (exit_code != 0)
-            {
-                _c_make_context.did_fail = true;
-                // TODO: log that the process has exited with an error code
-                // TODO: What to return here? false or true?
-                result = false;
-            }
-
-            break;
-        }
-
-        if (WIFSIGNALED(status))
-        {
-            _c_make_context.did_fail = true;
-            // TODO: log the signal that terminated the child
-            result = false;
-            break;
-        }
-    }
-#endif
-
-    for (size_t i = 0; i < _c_make_context.process_group.count; i += 1)
-    {
-        if (_c_make_context.process_group.items[i] == process_id)
-        {
-            _c_make_context.process_group.count -= 1;
-            _c_make_context.process_group.items[i] = _c_make_context.process_group.items[_c_make_context.process_group.count];
-            break;
-        }
-    }
-
-    return result;
+    return false;
 }
 
 C_MAKE_DEF bool
@@ -2932,7 +2975,7 @@ c_make_process_wait_for_all(void)
 
     while (_c_make_context.process_group.count)
     {
-        result = result & c_make_process_wait(_c_make_context.process_group.items[0]);
+        result = result & c_make_process_wait(_c_make_context.process_group.items[0].id);
     }
 
     return result;
@@ -2953,8 +2996,9 @@ print_help(const char *program_name)
     fprintf(stderr, "options:\n");
     fprintf(stderr, "    --verbose            This will print out the configuration and all the\n");
     fprintf(stderr, "                         command lines that are executed.\n");
-    fprintf(stderr, "    --sequential         This will make c_make_command_run wait for all running commands to finish.\n");
-    fprintf(stderr, "                         This effectively sequentializes the build process.\n\n");
+    fprintf(stderr, "    --sequential         This will make c_make_command_run wait for the command\n");
+    fprintf(stderr, "                         to terminate. This effectively sequentializes the\n");
+    fprintf(stderr, "                         build process.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Every build directory has a configuration which is stored in 'c_make.txt'.\n");
     fprintf(stderr, "It consists of all the options that define a build. All options can be set\n");
@@ -2981,7 +3025,6 @@ print_help(const char *program_name)
     fprintf(stderr, "\n");
     fprintf(stderr, "host platform: %s\n", c_make_get_platform_name(c_make_get_host_platform()));
     fprintf(stderr, "host architecture: %s\n", c_make_get_architecture_name(c_make_get_host_architecture()));
-    fprintf(stderr, "\n");
 }
 
 int main(int argument_count, char **arguments)
