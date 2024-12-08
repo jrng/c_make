@@ -393,7 +393,9 @@ C_MAKE_DEF void c_make_memory_restore(size_t saved);
 C_MAKE_DEF void c_make_command_append_va(CMakeCommand *command, size_t count, ...);
 C_MAKE_DEF void c_make_command_append_slice(CMakeCommand *command, size_t count, const char **items);
 C_MAKE_DEF void c_make_command_append_command_line(CMakeCommand *command, const char *str);
-C_MAKE_DEF void c_make_command_append_output(CMakeCommand *command, const char *output_path, CMakePlatform platform);
+C_MAKE_DEF void c_make_command_append_output_object(CMakeCommand *command, const char *output_path, CMakePlatform platform);
+C_MAKE_DEF void c_make_command_append_output_executable(CMakeCommand *command, const char *output_path, CMakePlatform platform);
+C_MAKE_DEF void c_make_command_append_input_static_library(CMakeCommand *command, const char *input_path, CMakePlatform platform);
 C_MAKE_DEF void c_make_command_append_default_compiler_flags(CMakeCommand *command, CMakeBuildType build_type);
 C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture architecture);
 C_MAKE_DEF CMakeString c_make_command_to_string(CMakeCommand command);
@@ -402,6 +404,7 @@ C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
 C_MAKE_DEF CMakeString c_make_copy_string(CMakeMemory *memory, CMakeString str);
 C_MAKE_DEF CMakeString c_make_string_split_left(CMakeString *str, char c);
 C_MAKE_DEF CMakeString c_make_string_split_right(CMakeString *str, char c);
+C_MAKE_DEF CMakeString c_make_string_split_right_path_separator(CMakeString *str);
 C_MAKE_DEF CMakeString c_make_string_trim(CMakeString str);
 C_MAKE_DEF size_t c_make_string_find(CMakeString str, CMakeString pattern);
 C_MAKE_DEF char *c_make_string_to_c_string(CMakeMemory *memory, CMakeString str);
@@ -975,7 +978,36 @@ c_make_command_append_command_line(CMakeCommand *command, const char *str)
 }
 
 C_MAKE_DEF void
-c_make_command_append_output(CMakeCommand *command, const char *output_path, CMakePlatform platform)
+c_make_command_append_output_object(CMakeCommand *command, const char *output_path, CMakePlatform platform)
+{
+    if ((command->count > 0) && command->items[0])
+    {
+        const char *compiler = command->items[0];
+
+        if (c_make_compiler_is_msvc(compiler))
+        {
+            c_make_command_append(command, c_make_c_string_concat("-Fo", output_path, ".obj"));
+        }
+        else
+        {
+            if (platform == CMakePlatformWindows)
+            {
+                c_make_command_append(command, "-o", c_make_c_string_concat(output_path, ".obj"));
+            }
+            else
+            {
+                c_make_command_append(command, "-o", c_make_c_string_concat(output_path, ".o"));
+            }
+        }
+    }
+    else
+    {
+        c_make_log(CMakeLogLevelWarning, "%s: you need to append a c/c++ compiler command as the first argument\n", __func__);
+    }
+}
+
+C_MAKE_DEF void
+c_make_command_append_output_executable(CMakeCommand *command, const char *output_path, CMakePlatform platform)
 {
     if ((command->count > 0) && command->items[0])
     {
@@ -1000,6 +1032,40 @@ c_make_command_append_output(CMakeCommand *command, const char *output_path, CMa
         }
 
         c_make_command_append_slice(command, CMakeArrayCount(arguments), arguments);
+    }
+    else
+    {
+        c_make_log(CMakeLogLevelWarning, "%s: you need to append a c/c++ compiler command as the first argument\n", __func__);
+    }
+}
+
+C_MAKE_DEF void
+c_make_command_append_input_static_library(CMakeCommand *command, const char *input_path, CMakePlatform platform)
+{
+    if ((command->count > 0) && command->items[0])
+    {
+        CMakeString path_str = CMakeCString(input_path);
+        CMakeString name_str = c_make_string_split_right_path_separator(&path_str);
+
+        size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+        const char *path = c_make_string_to_c_string(&_c_make_context.private_memory, path_str);
+        const char *name = c_make_string_to_c_string(&_c_make_context.private_memory, name_str);
+
+        const char *full_path;
+
+        if (platform == CMakePlatformWindows)
+        {
+            full_path = c_make_c_string_path_concat(path, c_make_c_string_concat("lib", name, ".lib"));
+        }
+        else
+        {
+            full_path = c_make_c_string_path_concat(path, c_make_c_string_concat("lib", name, ".a"));
+        }
+
+        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
+        c_make_command_append(command, full_path);
     }
     else
     {
@@ -1211,6 +1277,32 @@ c_make_string_split_right(CMakeString *str, char c)
     while (str->count)
     {
         if (str->data[str->count - 1] == c)
+        {
+            break;
+        }
+
+        str->count -= 1;
+    }
+
+    if (str->count)
+    {
+        result.count -= str->count;
+        result.data += str->count;
+        str->count -= 1;
+    }
+
+    return result;
+}
+
+C_MAKE_DEF CMakeString
+c_make_string_split_right_path_separator(CMakeString *str)
+{
+    CMakeString result = *str;
+
+    while (str->count)
+    {
+        if ((str->data[str->count - 1] == '/') ||
+            (str->data[str->count - 1] == '\\'))
         {
             break;
         }
@@ -3279,7 +3371,7 @@ int main(int argument_count, char **arguments)
         c_make_command_append_command_line(&command, CMakeStr(C_MAKE_COMPILER_FLAGS));
         c_make_command_append(&command, "-DC_MAKE_COMPILER_FLAGS=" CMakeStr(C_MAKE_COMPILER_FLAGS));
 #endif
-        c_make_command_append_output(&command, "c_make", c_make_get_host_platform());
+        c_make_command_append_output_executable(&command, "c_make", c_make_get_host_platform());
         c_make_command_append(&command, c_make_source_file);
         c_make_command_append_default_linker_flags(&command, c_make_get_host_architecture());
 

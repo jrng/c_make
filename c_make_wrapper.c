@@ -136,7 +136,7 @@ int main(int argument_count, char **arguments)
 
                 c_make_memory_restore(memory_saved);
 
-                c_make_command_append_output(&command, "c_make", c_make_get_host_platform());
+                c_make_command_append_output_executable(&command, "c_make", c_make_get_host_platform());
                 c_make_command_append(&command, c_make_source_file);
                 c_make_command_append_default_linker_flags(&command, c_make_get_host_architecture());
 
