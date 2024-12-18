@@ -444,6 +444,7 @@ C_MAKE_DEF bool c_make_needs_rebuild_single_source(const char *output_file, cons
 C_MAKE_DEF bool c_make_file_exists(const char *file_name);
 C_MAKE_DEF bool c_make_directory_exists(const char *directory_name);
 C_MAKE_DEF bool c_make_create_directory(const char *directory_name);
+C_MAKE_DEF bool c_make_create_directory_recursively(const char *directory_name);
 C_MAKE_DEF bool c_make_read_entire_file(const char *file_name, CMakeString *content);
 C_MAKE_DEF bool c_make_write_entire_file(const char *file_name, CMakeString content);
 C_MAKE_DEF bool c_make_copy_file(const char *src_file, const char *dst_file);
@@ -2393,6 +2394,72 @@ c_make_create_directory(const char *directory_name)
 
     return false;
 #endif
+}
+
+C_MAKE_DEF bool
+c_make_create_directory_recursively(const char *directory_name)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
+    DWORD file_attributes = GetFileAttributes(utf16_directory_name);
+
+    if ((file_attributes == INVALID_FILE_ATTRIBUTES) || !(file_attributes & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        CMakeString parent_string = CMakeCString(directory_name);
+        c_make_string_split_right_path_separator(&parent_string);
+
+        if (parent_string.count > 0)
+        {
+            const char *parent_directory = c_make_string_to_c_string(&_c_make_context.private_memory, parent_string);
+
+            if (!c_make_create_directory_recursively(parent_directory))
+            {
+                c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+                return false;
+            }
+        }
+
+        if (!CreateDirectory(utf16_directory_name, 0) && (GetLastError() != ERROR_ALREADY_EXISTS))
+        {
+            c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+            return false;
+        }
+    }
+
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    struct stat stats;
+
+    if (stat(directory_name, &stats) || S_ISDIR(stats.st_mode))
+    {
+        CMakeString parent_string = CMakeCString(directory_name);
+        c_make_string_split_right_path_separator(&parent_string);
+
+        if (parent_string.count > 0)
+        {
+            size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+            const char *parent_directory = c_make_string_to_c_string(&_c_make_context.private_memory, parent_string);
+            bool result = c_make_create_directory_recursively(parent_directory);
+
+            c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
+            if (!result)
+            {
+                return false;
+            }
+        }
+
+        if (mkdir(directory_name, 0775) && (errno != EEXIST))
+        {
+            return false;
+        }
+    }
+#endif
+
+    return true;
 }
 
 C_MAKE_DEF bool
