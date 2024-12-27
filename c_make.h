@@ -3475,7 +3475,7 @@ int main(int argument_count, char **arguments)
 
     if (c_make_strings_are_equal(command, CMakeStringLiteral("setup")))
     {
-        c_make_create_directory(build_directory);
+        c_make_create_directory_recursively(build_directory);
 
         if (c_make_file_exists(config_file_name))
         {
