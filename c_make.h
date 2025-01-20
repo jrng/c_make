@@ -43,6 +43,7 @@
 #define C_MAKE_ARCHITECTURE_AARCH64 0
 #define C_MAKE_ARCHITECTURE_RISCV64 0
 #define C_MAKE_ARCHITECTURE_WASM32  0
+#define C_MAKE_ARCHITECTURE_WASM64  0
 
 #if C_MAKE_PLATFORM_WINDOWS
 #  if defined(__MINGW32__)
@@ -74,9 +75,12 @@
 #    define C_MAKE_ARCHITECTURE_RISCV64 1
 #  endif
 #elif C_MAKE_PLATFORM_WEB
-#  if defined(__wasm__)
+#  if defined(__wasm32__)
 #    undef C_MAKE_ARCHITECTURE_WASM32
-#    define C_MAKE_ARCHITECTURE_WASM32
+#    define C_MAKE_ARCHITECTURE_WASM32 1
+#  elif defined(__wasm64__)
+#    undef C_MAKE_ARCHITECTURE_WASM64
+#    define C_MAKE_ARCHITECTURE_WASM64 1
 #  endif
 #endif
 
@@ -180,6 +184,7 @@ typedef enum CMakeArchitecture
     CMakeArchitectureAarch64 = 2,
     CMakeArchitectureRiscv64 = 3,
     CMakeArchitectureWasm32  = 4,
+    CMakeArchitectureWasm64  = 5,
 } CMakeArchitecture;
 
 typedef enum CMakeBuildType
@@ -337,6 +342,8 @@ c_make_get_host_architecture(void)
     return CMakeArchitectureRiscv64;
 #elif C_MAKE_ARCHITECTURE_WASM32
     return CMakeArchitectureWasm32;
+#elif C_MAKE_ARCHITECTURE_WASM64
+    return CMakeArchitectureWasm64;
 #else
     return CMakeArchitectureUnknown;
 #endif
@@ -372,6 +379,7 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
         case CMakeArchitectureAarch64: name = "aarch64"; break;
         case CMakeArchitectureRiscv64: name = "riscv64"; break;
         case CMakeArchitectureWasm32:  name = "wasm32";  break;
+        case CMakeArchitectureWasm64:  name = "wasm64";  break;
     }
 
     return name;
@@ -2078,6 +2086,10 @@ c_make_config_set(const char *_key, const char *value)
         {
             _c_make_context.target_architecture = CMakeArchitectureWasm32;
         }
+        else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("wasm64")))
+        {
+            _c_make_context.target_architecture = CMakeArchitectureWasm64;
+        }
         else
         {
             _c_make_context.target_architecture = CMakeArchitectureUnknown;
@@ -3281,8 +3293,8 @@ print_help(const char *program_name)
     fprintf(stderr, "    host_cpp_compiler    Path to or name of the host c++ compiler.\n");
     fprintf(stderr, "    install_prefix       Install prefix. Defaults to '/usr/local'.\n");
     fprintf(stderr, "    target_architecture  Architecture of the target. Either 'amd64', 'aarch64',\n");
-    fprintf(stderr, "                         'riscv64' or 'wasm32'. The default is the host\n");
-    fprintf(stderr, "                         architecture.\n");
+    fprintf(stderr, "                         'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
+    fprintf(stderr, "                         host architecture.\n");
     fprintf(stderr, "    target_ar            Path to or name of the target archive/library program.\n");
     fprintf(stderr, "    target_c_compiler    Path to or name of the target c compiler.\n");
     fprintf(stderr, "    target_c_flags       Flags for the target c build.\n");
