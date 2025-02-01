@@ -92,7 +92,7 @@ C_MAKE_ENTRY()
             c_make_command_append_default_linker_flags(&command, c_make_get_target_architecture());
 
             c_make_log(CMakeLogLevel, "compile 'hello_world'\n");
-            c_make_command_run_and_wait(command);
+            c_make_command_run(command);
         } break;
 
         case CMakeTargetInstall:
