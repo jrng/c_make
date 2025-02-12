@@ -1181,7 +1181,11 @@ c_make_command_to_string(CMakeCommand command)
 
             while (*str)
             {
+#if C_MAKE_PLATFORM_WINDOWS
                 if ((*str == ',') || (*str == ';') || (*str == '=') || (*str == ' ') || (*str == '\t'))
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+                if ((*str == ' ') || (*str == '\t') || (*str == '\n'))
+#endif
                 {
                     needs_escaping = true;
                     break;
