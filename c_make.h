@@ -675,7 +675,7 @@ c_make_c_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_string_d
 static inline CMakeString
 c_make_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_string_data, DWORD utf16_string_char_count)
 {
-    CMakeString utf8_string = { 0 };
+    CMakeString utf8_string = { 0, 0 };
 
     if (utf16_string_char_count > 0)
     {
@@ -1161,7 +1161,7 @@ c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitect
 C_MAKE_DEF CMakeString
 c_make_command_to_string(CMakeCommand command)
 {
-    CMakeString result = { 0 };
+    CMakeString result = { 0, 0 };
 
     for (size_t i = 0; i < command.count; i += 1)
     {
@@ -2119,7 +2119,7 @@ c_make_config_set(const char *_key, const char *value)
 C_MAKE_DEF CMakeConfigValue
 c_make_config_get(const char *_key)
 {
-    CMakeConfigValue result = { 0 };
+    CMakeConfigValue result = { false, 0 };
     CMakeString key = CMakeCString(_key);
 
     for (size_t i = 0; i < _c_make_context.config.count; i += 1)
@@ -2179,7 +2179,7 @@ c_make_store_config(const char *file_name)
 C_MAKE_DEF bool
 c_make_load_config(const char *file_name)
 {
-    CMakeString config_string = { 0 };
+    CMakeString config_string = { 0, 0 };
 
     if (!c_make_read_entire_file(file_name, &config_string))
     {
@@ -2802,7 +2802,7 @@ c_make_has_slash_or_backslash(const char *path)
 C_MAKE_DEF CMakeString
 c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name)
 {
-    CMakeString result = { 0 };
+    CMakeString result = { 0, 0 };
 
 #if C_MAKE_PLATFORM_WINDOWS
     wchar_t *utf16_variable_name = c_make_c_string_utf8_to_utf16(memory, variable_name);
@@ -2876,7 +2876,7 @@ c_make_find_program(const char *program_name)
 C_MAKE_DEF CMakeString
 c_make_string_concat_va(size_t count, ...)
 {
-    CMakeString result = { 0 };
+    CMakeString result = { 0, 0 };
 
     va_list args;
     va_start(args, count);
@@ -3432,11 +3432,13 @@ int main(int argument_count, char **arguments)
 
 #ifdef __cplusplus
         const char *compiler = c_make_get_host_cpp_compiler();
+
+        CMakeCommand command = { };
 #else
         const char *compiler = c_make_get_host_c_compiler();
-#endif
 
         CMakeCommand command = { 0 };
+#endif
 
         c_make_command_append(&command, compiler);
 
