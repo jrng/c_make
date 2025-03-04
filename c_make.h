@@ -3338,23 +3338,29 @@ print_help(const char *program_name)
     fprintf(stderr, "want can be stored in there, but there are some options that have special\n");
     fprintf(stderr, "meaning to c_make:\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "    build_type           Build type. Either 'debug', 'reldebug' or 'release'.\n");
-    fprintf(stderr, "                         Default: 'debug'\n");
-    fprintf(stderr, "    host_ar              Path to or name of the host archive/library program.\n");
-    fprintf(stderr, "    host_c_compiler      Path to or name of the host c compiler.\n");
-    fprintf(stderr, "    host_cpp_compiler    Path to or name of the host c++ compiler.\n");
-    fprintf(stderr, "    install_prefix       Install prefix. Defaults to '/usr/local'.\n");
-    fprintf(stderr, "    target_architecture  Architecture of the target. Either 'amd64', 'aarch64',\n");
-    fprintf(stderr, "                         'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
-    fprintf(stderr, "                         host architecture.\n");
-    fprintf(stderr, "    target_ar            Path to or name of the target archive/library program.\n");
-    fprintf(stderr, "    target_c_compiler    Path to or name of the target c compiler.\n");
-    fprintf(stderr, "    target_c_flags       Flags for the target c build.\n");
-    fprintf(stderr, "    target_cpp_compiler  Path to or name of the target c++ compiler.\n");
-    fprintf(stderr, "    target_cpp_flags     Flags for the target c++ build.\n");
-    fprintf(stderr, "    target_platform      Platform of the target. Either 'android', 'freebsd',\n");
-    fprintf(stderr, "                         'windows', 'linux', 'macos' or 'web'. The default is\n");
-    fprintf(stderr, "                         the host platform.\n");
+    fprintf(stderr, "    build_type               Build type. Either 'debug', 'reldebug' or 'release'.\n");
+    fprintf(stderr, "                             Default: 'debug'\n");
+    fprintf(stderr, "    host_ar                  Path to or name of the host archive/library program.\n");
+    fprintf(stderr, "    host_c_compiler          Path to or name of the host c compiler.\n");
+    fprintf(stderr, "    host_cpp_compiler        Path to or name of the host c++ compiler.\n");
+    fprintf(stderr, "    install_prefix           Install prefix. Defaults to '/usr/local'.\n");
+    fprintf(stderr, "    target_architecture      Architecture of the target. Either 'amd64', 'aarch64',\n");
+    fprintf(stderr, "                             'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
+    fprintf(stderr, "                             host architecture.\n");
+    fprintf(stderr, "    target_ar                Path to or name of the target archive/library program.\n");
+    fprintf(stderr, "    target_c_compiler        Path to or name of the target c compiler.\n");
+    fprintf(stderr, "    target_c_flags           Flags for the target c build.\n");
+    fprintf(stderr, "    target_cpp_compiler      Path to or name of the target c++ compiler.\n");
+    fprintf(stderr, "    target_cpp_flags         Flags for the target c++ build.\n");
+    fprintf(stderr, "    target_platform          Platform of the target. Either 'android', 'freebsd',\n");
+    fprintf(stderr, "                             'windows', 'linux', 'macos' or 'web'. The default is\n");
+    fprintf(stderr, "                             the host platform.\n");
+    fprintf(stderr, "    visual_studio_root_path  Path to the visual studio install. This should be the directory\n");
+    fprintf(stderr, "                             in which you find 'VC\\Tools\\MSVC\\<version>'.\n");
+    fprintf(stderr, "    visual_studio_version    The version of the visual studio install.\n");
+    fprintf(stderr, "    windows_sdk_root_path    Path to the windows sdk. This should be the directory\n");
+    fprintf(stderr, "                             in which you find 'bin', 'Include' and 'Lib'.\n");
+    fprintf(stderr, "    windows_sdk_version      The version of the windows sdk.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "host platform: %s\n", c_make_get_platform_name(c_make_get_host_platform()));
     fprintf(stderr, "host architecture: %s\n", c_make_get_architecture_name(c_make_get_host_architecture()));
@@ -3677,6 +3683,71 @@ int main(int argument_count, char **arguments)
         c_make_config_set_if_not_exists("build_type", "debug");
         // TODO: set to something different for windows
         c_make_config_set_if_not_exists("install_prefix", "/usr/local");
+
+#if C_MAKE_PLATFORM_WINDOWS
+        CMakeConfigValue visual_studio_version = c_make_config_get("visual_studio_version");
+        CMakeConfigValue visual_studio_root_path = c_make_config_get("visual_studio_root_path");
+
+        if (!visual_studio_version.is_valid || !visual_studio_root_path.is_valid)
+        {
+            size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+            CMakeString VCToolsVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsVersion"));
+            CMakeString VCToolsInstallDir = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsInstallDir"));
+
+            if (VCToolsVersion.count && VCToolsInstallDir.count)
+            {
+                while (VCToolsInstallDir.count)
+                {
+                    CMakeString directory = c_make_string_split_right_path_separator(&VCToolsInstallDir);
+
+                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("VC")))
+                    {
+                        break;
+                    }
+                }
+
+                c_make_config_set("visual_studio_version", c_make_string_to_c_string(&_c_make_context.public_memory, VCToolsVersion));
+                c_make_config_set("visual_studio_root_path", c_make_string_to_c_string(&_c_make_context.public_memory, VCToolsInstallDir));
+            }
+
+            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        }
+
+        CMakeConfigValue windows_sdk_version = c_make_config_get("windows_sdk_version");
+        CMakeConfigValue windows_sdk_root_path = c_make_config_get("windows_sdk_root_path");
+
+        if (!windows_sdk_version.is_valid || !windows_sdk_root_path.is_valid)
+        {
+            size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+            CMakeString WindowsSDKVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSDKVersion"));
+            CMakeString WindowsSdkBinPath = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSdkBinPath"));
+
+            if (WindowsSDKVersion.count && (WindowsSDKVersion.data[WindowsSDKVersion.count - 1] == '\\'))
+            {
+                WindowsSDKVersion.count -= 1;
+            }
+
+            if (WindowsSDKVersion.count && WindowsSdkBinPath.count)
+            {
+                while (WindowsSdkBinPath.count)
+                {
+                    CMakeString directory = c_make_string_split_right_path_separator(&WindowsSdkBinPath);
+
+                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("bin")))
+                    {
+                        break;
+                    }
+                }
+
+                c_make_config_set("windows_sdk_version", c_make_string_to_c_string(&_c_make_context.public_memory, WindowsSDKVersion));
+                c_make_config_set("windows_sdk_root_path", c_make_string_to_c_string(&_c_make_context.public_memory, WindowsSdkBinPath));
+            }
+
+            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        }
+#endif
 
         if (c_make_get_host_platform() != c_make_get_target_platform())
         {
