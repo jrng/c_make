@@ -3555,7 +3555,66 @@ int main(int argument_count, char **arguments)
             return 2;
         }
 
+        c_make_config_set_if_not_exists("target_platform", c_make_get_platform_name(c_make_get_host_platform()));
+        c_make_config_set_if_not_exists("target_architecture", c_make_get_architecture_name(c_make_get_host_architecture()));
+        c_make_config_set_if_not_exists("build_type", "debug");
+        // TODO: set to something different for windows
+        c_make_config_set_if_not_exists("install_prefix", "/usr/local");
+
         size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+#if C_MAKE_PLATFORM_WINDOWS
+        {
+            CMakeString VCToolsVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsVersion"));
+            CMakeString VCToolsInstallDir = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsInstallDir"));
+
+            if (VCToolsVersion.count && VCToolsInstallDir.count)
+            {
+                while (VCToolsInstallDir.count)
+                {
+                    CMakeString directory = c_make_string_split_right_path_separator(&VCToolsInstallDir);
+
+                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("VC")))
+                    {
+                        break;
+                    }
+                }
+
+                c_make_config_set("visual_studio_version", c_make_string_to_c_string(&_c_make_context.public_memory, VCToolsVersion));
+                c_make_config_set("visual_studio_root_path", c_make_string_to_c_string(&_c_make_context.public_memory, VCToolsInstallDir));
+            }
+
+            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        }
+
+        {
+            CMakeString WindowsSDKVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSDKVersion"));
+            CMakeString WindowsSdkBinPath = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSdkBinPath"));
+
+            if (WindowsSDKVersion.count && (WindowsSDKVersion.data[WindowsSDKVersion.count - 1] == '\\'))
+            {
+                WindowsSDKVersion.count -= 1;
+            }
+
+            if (WindowsSDKVersion.count && WindowsSdkBinPath.count)
+            {
+                while (WindowsSdkBinPath.count)
+                {
+                    CMakeString directory = c_make_string_split_right_path_separator(&WindowsSdkBinPath);
+
+                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("bin")))
+                    {
+                        break;
+                    }
+                }
+
+                c_make_config_set("windows_sdk_version", c_make_string_to_c_string(&_c_make_context.public_memory, WindowsSDKVersion));
+                c_make_config_set("windows_sdk_root_path", c_make_string_to_c_string(&_c_make_context.public_memory, WindowsSdkBinPath));
+            }
+
+            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        }
+#endif
 
         {
             CMakeString ARCH = c_make_get_environment_variable(&_c_make_context.public_memory, "ARCH");
@@ -3645,110 +3704,6 @@ int main(int argument_count, char **arguments)
             c_make_memory_set_used(&_c_make_context.public_memory, public_used);
         }
 
-        for (int i = 3; i < argument_count; i += 1)
-        {
-            CMakeString argument = CMakeCString(arguments[i]);
-
-            CMakeString key = c_make_string_trim(c_make_string_split_left(&argument, '='));
-            CMakeString value = c_make_string_trim(argument);
-
-            if (key.count && value.count)
-            {
-                if (value.data[0] == '"')
-                {
-                    value.count -= 1;
-                    value.data += 1;
-                }
-
-                if (value.count && (value.data[value.count - 1] == '"'))
-                {
-                    value.count -= 1;
-                }
-
-                size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-
-                c_make_config_set(c_make_string_to_c_string(&_c_make_context.public_memory, key),
-                                  c_make_string_to_c_string(&_c_make_context.public_memory, value));
-
-                c_make_memory_set_used(&_c_make_context.public_memory, public_used);
-            }
-        }
-
-        _c_make_entry_(CMakeTargetSetup);
-
-        c_make_process_wait_for_all();
-
-        c_make_config_set_if_not_exists("target_platform", c_make_get_platform_name(c_make_get_host_platform()));
-        c_make_config_set_if_not_exists("target_architecture", c_make_get_architecture_name(c_make_get_host_architecture()));
-        c_make_config_set_if_not_exists("build_type", "debug");
-        // TODO: set to something different for windows
-        c_make_config_set_if_not_exists("install_prefix", "/usr/local");
-
-#if C_MAKE_PLATFORM_WINDOWS
-        CMakeConfigValue visual_studio_version = c_make_config_get("visual_studio_version");
-        CMakeConfigValue visual_studio_root_path = c_make_config_get("visual_studio_root_path");
-
-        if (!visual_studio_version.is_valid || !visual_studio_root_path.is_valid)
-        {
-            size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-
-            CMakeString VCToolsVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsVersion"));
-            CMakeString VCToolsInstallDir = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsInstallDir"));
-
-            if (VCToolsVersion.count && VCToolsInstallDir.count)
-            {
-                while (VCToolsInstallDir.count)
-                {
-                    CMakeString directory = c_make_string_split_right_path_separator(&VCToolsInstallDir);
-
-                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("VC")))
-                    {
-                        break;
-                    }
-                }
-
-                c_make_config_set("visual_studio_version", c_make_string_to_c_string(&_c_make_context.public_memory, VCToolsVersion));
-                c_make_config_set("visual_studio_root_path", c_make_string_to_c_string(&_c_make_context.public_memory, VCToolsInstallDir));
-            }
-
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
-        }
-
-        CMakeConfigValue windows_sdk_version = c_make_config_get("windows_sdk_version");
-        CMakeConfigValue windows_sdk_root_path = c_make_config_get("windows_sdk_root_path");
-
-        if (!windows_sdk_version.is_valid || !windows_sdk_root_path.is_valid)
-        {
-            size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-
-            CMakeString WindowsSDKVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSDKVersion"));
-            CMakeString WindowsSdkBinPath = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSdkBinPath"));
-
-            if (WindowsSDKVersion.count && (WindowsSDKVersion.data[WindowsSDKVersion.count - 1] == '\\'))
-            {
-                WindowsSDKVersion.count -= 1;
-            }
-
-            if (WindowsSDKVersion.count && WindowsSdkBinPath.count)
-            {
-                while (WindowsSdkBinPath.count)
-                {
-                    CMakeString directory = c_make_string_split_right_path_separator(&WindowsSdkBinPath);
-
-                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("bin")))
-                    {
-                        break;
-                    }
-                }
-
-                c_make_config_set("windows_sdk_version", c_make_string_to_c_string(&_c_make_context.public_memory, WindowsSDKVersion));
-                c_make_config_set("windows_sdk_root_path", c_make_string_to_c_string(&_c_make_context.public_memory, WindowsSdkBinPath));
-            }
-
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
-        }
-#endif
-
         if (c_make_get_host_platform() != c_make_get_target_platform())
         {
             if (c_make_get_target_platform() == CMakePlatformWindows)
@@ -3802,6 +3757,39 @@ int main(int argument_count, char **arguments)
                 }
             }
         }
+
+        for (int i = 3; i < argument_count; i += 1)
+        {
+            CMakeString argument = CMakeCString(arguments[i]);
+
+            CMakeString key = c_make_string_trim(c_make_string_split_left(&argument, '='));
+            CMakeString value = c_make_string_trim(argument);
+
+            if (key.count && value.count)
+            {
+                if (value.data[0] == '"')
+                {
+                    value.count -= 1;
+                    value.data += 1;
+                }
+
+                if (value.count && (value.data[value.count - 1] == '"'))
+                {
+                    value.count -= 1;
+                }
+
+                size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+                c_make_config_set(c_make_string_to_c_string(&_c_make_context.public_memory, key),
+                                  c_make_string_to_c_string(&_c_make_context.public_memory, value));
+
+                c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+            }
+        }
+
+        _c_make_entry_(CMakeTargetSetup);
+
+        c_make_process_wait_for_all();
 
         c_make_log(CMakeLogLevelInfo, "store config:\n");
         c_make_print_config();
