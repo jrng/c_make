@@ -442,6 +442,11 @@ C_MAKE_DEF const char *c_make_get_msvc_compiler(CMakeArchitecture target_archite
 C_MAKE_DEF void c_make_command_append_msvc_compiler_flags(CMakeCommand *command);
 C_MAKE_DEF void c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture);
 
+C_MAKE_DEF const char *c_make_get_java_compiler(void);
+C_MAKE_DEF const char *c_make_get_java_keytool(void);
+C_MAKE_DEF const char *c_make_get_java_jar(void);
+C_MAKE_DEF const char *c_make_get_java_jarsigner(void);
+
 C_MAKE_DEF void c_make_config_set(const char *key, const char *value);
 C_MAKE_DEF CMakeConfigValue c_make_config_get(const char *key);
 
@@ -2055,6 +2060,78 @@ c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture
     }
 }
 
+static inline const char *
+c_make_get_java_executable(const char *config_name, const char *executable_name)
+{
+    const char *result = 0;
+    CMakeConfigValue value = c_make_config_get(config_name);
+
+    if (value.is_valid)
+    {
+        result = value.val;
+    }
+    else
+    {
+        CMakeConfigValue java_home = c_make_config_get("java_home");
+
+        if (java_home.is_valid)
+        {
+            result = c_make_c_string_path_concat(java_home.val, "bin", executable_name);
+        }
+        else
+        {
+            result = executable_name;
+        }
+    }
+
+    if (!c_make_has_slash_or_backslash(result))
+    {
+        result = c_make_find_program(result);
+    }
+
+    return result;
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_compiler(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_java_executable("java_compiler", "javac.exe");
+#else
+    return c_make_get_java_executable("java_compiler", "javac");
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_keytool(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_java_executable("java_keytool", "keytool.exe");
+#else
+    return c_make_get_java_executable("java_keytool", "keytool");
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_jar(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_java_executable("java_jar", "jar.exe");
+#else
+    return c_make_get_java_executable("java_jar", "jar");
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_jarsigner(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_java_executable("java_jarsigner", "jarsigner.exe");
+#else
+    return c_make_get_java_executable("java_jarsigner", "jarsigner");
+#endif
+}
+
 C_MAKE_DEF void
 c_make_config_set(const char *_key, const char *value)
 {
@@ -3344,6 +3421,11 @@ print_help(const char *program_name)
     fprintf(stderr, "    host_c_compiler          Path to or name of the host c compiler.\n");
     fprintf(stderr, "    host_cpp_compiler        Path to or name of the host c++ compiler.\n");
     fprintf(stderr, "    install_prefix           Install prefix. Defaults to '/usr/local'.\n");
+    fprintf(stderr, "    java_compiler            Path to or name of the java compiler (javac).\n");
+    fprintf(stderr, "    java_home                Root path of the java development kit (JDK).\n");
+    fprintf(stderr, "    java_jar                 Path to or name of the java jar tool.\n");
+    fprintf(stderr, "    java_jarsigner           Path to or name of the java jarsigner tool.\n");
+    fprintf(stderr, "    java_keytool             Path to or name of the java keytool.\n");
     fprintf(stderr, "    target_architecture      Architecture of the target. Either 'amd64', 'aarch64',\n");
     fprintf(stderr, "                             'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
     fprintf(stderr, "                             host architecture.\n");
@@ -3698,6 +3780,22 @@ int main(int argument_count, char **arguments)
                 if (CXX.count)
                 {
                     c_make_config_set("target_cpp_flags", c_make_string_to_c_string(&_c_make_context.public_memory, CXX));
+                }
+            }
+
+            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        }
+
+        {
+            CMakeString JAVA_HOME = c_make_get_environment_variable(&_c_make_context.public_memory, "JAVA_HOME");
+
+            if (JAVA_HOME.count)
+            {
+                const char *java_home = c_make_string_to_c_string(&_c_make_context.public_memory, JAVA_HOME);
+
+                if (java_home)
+                {
+                    c_make_config_set("java_home", java_home);
                 }
             }
 
