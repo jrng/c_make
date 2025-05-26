@@ -201,6 +201,12 @@ typedef struct CMakeMemory
     void *base;
 } CMakeMemory;
 
+typedef struct CMakeTemporaryMemory
+{
+    CMakeMemory *memory;
+    size_t used;
+} CMakeTemporaryMemory;
+
 typedef struct CMakeString
 {
     size_t count;
@@ -265,8 +271,8 @@ typedef struct CMakeContext
 
     CMakeConfig config;
     CMakeMemory permanent_memory;
-    CMakeMemory private_memory;
     CMakeMemory public_memory;
+    CMakeMemory temporary_memories[2];
 
     CMakeProcessGroup process_group;
 
@@ -399,6 +405,9 @@ C_MAKE_DEF void *c_make_allocate(size_t size);
 C_MAKE_DEF size_t c_make_memory_save(void);
 C_MAKE_DEF void c_make_memory_restore(size_t saved);
 
+C_MAKE_DEF CMakeTemporaryMemory c_make_begin_temporary_memory(size_t conflict_count, CMakeMemory **conflicts);
+C_MAKE_DEF void c_make_end_temporary_memory(CMakeTemporaryMemory temp_memory);
+
 C_MAKE_DEF void c_make_command_append_va(CMakeCommand *command, size_t count, ...);
 C_MAKE_DEF void c_make_command_append_slice(CMakeCommand *command, size_t count, const char **items);
 C_MAKE_DEF void c_make_command_append_command_line(CMakeCommand *command, const char *str);
@@ -407,7 +416,7 @@ C_MAKE_DEF void c_make_command_append_output_executable(CMakeCommand *command, c
 C_MAKE_DEF void c_make_command_append_input_static_library(CMakeCommand *command, const char *input_path, CMakePlatform platform);
 C_MAKE_DEF void c_make_command_append_default_compiler_flags(CMakeCommand *command, CMakeBuildType build_type);
 C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture architecture);
-C_MAKE_DEF CMakeString c_make_command_to_string(CMakeCommand command);
+C_MAKE_DEF CMakeString c_make_command_to_string(CMakeMemory *memory, CMakeCommand command);
 
 C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
 C_MAKE_DEF CMakeString c_make_copy_string(CMakeMemory *memory, CMakeString str);
@@ -903,6 +912,50 @@ c_make_memory_restore(size_t saved)
     c_make_memory_set_used(&_c_make_context.public_memory, saved);
 }
 
+C_MAKE_DEF CMakeTemporaryMemory
+c_make_begin_temporary_memory(size_t conflict_count, CMakeMemory **conflicts)
+{
+    CMakeTemporaryMemory result = { 0, 0 };
+    CMakeMemory *temp_memory = 0;
+
+    for (size_t i = 0; i < CMakeArrayCount(_c_make_context.temporary_memories); i += 1)
+    {
+        CMakeMemory *memory = _c_make_context.temporary_memories + i;
+        bool has_conflict = false;
+
+        for (size_t j = 0; j < conflict_count; j += 1)
+        {
+            if (memory == conflicts[j])
+            {
+                has_conflict = true;
+                break;
+            }
+        }
+
+        if (!has_conflict)
+        {
+            temp_memory = memory;
+            break;
+        }
+    }
+
+    if (temp_memory)
+    {
+        result.memory = temp_memory;
+        result.used = c_make_memory_get_used(temp_memory);
+    }
+
+    return result;
+}
+
+C_MAKE_DEF void
+c_make_end_temporary_memory(CMakeTemporaryMemory temp_memory)
+{
+    assert(temp_memory.memory);
+
+    c_make_memory_set_used(temp_memory.memory, temp_memory.used);
+}
+
 C_MAKE_DEF void
 c_make_command_append_va(CMakeCommand *command, size_t count, ...)
 {
@@ -1064,10 +1117,10 @@ c_make_command_append_input_static_library(CMakeCommand *command, const char *in
         CMakeString path_str = CMakeCString(input_path);
         CMakeString name_str = c_make_string_split_right_path_separator(&path_str);
 
-        size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-        const char *path = c_make_string_to_c_string(&_c_make_context.private_memory, path_str);
-        const char *name = c_make_string_to_c_string(&_c_make_context.private_memory, name_str);
+        const char *path = c_make_string_to_c_string(temp_memory.memory, path_str);
+        const char *name = c_make_string_to_c_string(temp_memory.memory, name_str);
 
         const char *full_path;
 
@@ -1080,7 +1133,7 @@ c_make_command_append_input_static_library(CMakeCommand *command, const char *in
             full_path = c_make_c_string_path_concat(path, c_make_c_string_concat("lib", name, ".a"));
         }
 
-        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+        c_make_end_temporary_memory(temp_memory);
 
         c_make_command_append(command, full_path);
     }
@@ -1167,7 +1220,7 @@ c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitect
 }
 
 C_MAKE_DEF CMakeString
-c_make_command_to_string(CMakeCommand command)
+c_make_command_to_string(CMakeMemory *memory, CMakeCommand command)
 {
     CMakeString result = { 0, 0 };
 
@@ -1179,7 +1232,7 @@ c_make_command_to_string(CMakeCommand command)
 
     if (result.count > 0)
     {
-        result.data = (char *) c_make_memory_allocate(&_c_make_context.public_memory, result.count);
+        result.data = (char *) c_make_memory_allocate(memory, result.count);
         char *dst = result.data;
 
         for (size_t i = 0; i < command.count; i += 1)
@@ -1815,21 +1868,21 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
         return false;
     }
 
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    wchar_t *windows_sdk_root_path = (wchar_t *) c_make_memory_allocate(&_c_make_context.private_memory, root_length);
+    wchar_t *windows_sdk_root_path = (wchar_t *) c_make_memory_allocate(temp_memory.memory, root_length);
 
     res = RegGetValue(installed_roots_key, 0, L"KitsRoot10", RRF_RT_REG_SZ, 0, windows_sdk_root_path, &root_length);
 
     if (res != ERROR_SUCCESS)
     {
-        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+        c_make_end_temporary_memory(temp_memory);
         RegCloseKey(installed_roots_key);
         return false;
     }
 
     size_t include_length = sizeof(L"Include\\*") - 2;
-    wchar_t *include_path = (wchar_t *) c_make_memory_allocate(&_c_make_context.private_memory, root_length + include_length);
+    wchar_t *include_path = (wchar_t *) c_make_memory_allocate(temp_memory.memory, root_length + include_length);
 
     char *dst = (char *) include_path;
     char *src = (char *) windows_sdk_root_path;
@@ -1886,7 +1939,7 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
     }
 
     RegCloseKey(installed_roots_key);
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     if (!best_version)
     {
@@ -2290,16 +2343,16 @@ c_make_store_config(const char *file_name)
                                              entry->value, CMakeStringLiteral("\"\n"));
     }
 
-    if (!c_make_write_entire_file(file_name, config_string))
+    bool result = c_make_write_entire_file(file_name, config_string);
+
+    if (!result)
     {
         c_make_log(CMakeLogLevelError, "could not write config file '%s'\n", file_name);
-        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
-        return false;
     }
 
     c_make_memory_set_used(&_c_make_context.public_memory, public_used);
 
-    return true;
+    return result;
 }
 
 C_MAKE_DEF bool
@@ -2312,6 +2365,9 @@ c_make_load_config(const char *file_name)
         c_make_log(CMakeLogLevelError, "could not read config file '%s'\n", file_name);
         return false;
     }
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+    size_t memory_used = c_make_memory_get_used(temp_memory.memory);
 
     while (config_string.count)
     {
@@ -2331,12 +2387,10 @@ c_make_load_config(const char *file_name)
                     value.count -= 1;
                 }
 
-                size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+                c_make_memory_set_used(temp_memory.memory, memory_used);
 
-                c_make_config_set(c_make_string_to_c_string(&_c_make_context.public_memory, key),
-                                  c_make_string_to_c_string(&_c_make_context.public_memory, value));
-
-                c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+                c_make_config_set(c_make_string_to_c_string(temp_memory.memory, key),
+                                  c_make_string_to_c_string(temp_memory.memory, value));
             }
             else
             {
@@ -2345,6 +2399,8 @@ c_make_load_config(const char *file_name)
         }
     }
 
+    c_make_end_temporary_memory(temp_memory);
+
     return true;
 }
 
@@ -2352,12 +2408,12 @@ C_MAKE_DEF bool
 c_make_needs_rebuild(const char *output_file, size_t input_file_count, const char **input_files)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, output_file);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, output_file);
     HANDLE file = CreateFile(utf16_file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     if (file == INVALID_HANDLE_VALUE)
     {
@@ -2381,12 +2437,12 @@ c_make_needs_rebuild(const char *output_file, size_t input_file_count, const cha
 
     for (size_t i = 0; i < input_file_count; i += 1)
     {
-        size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-        utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, input_files[i]);
+        utf16_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, input_files[i]);
         file = CreateFile(utf16_file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
-        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+        c_make_end_temporary_memory(temp_memory);
 
         if (file == INVALID_HANDLE_VALUE)
         {
@@ -2454,12 +2510,12 @@ C_MAKE_DEF bool
 c_make_file_exists(const char *file_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, file_name);
     DWORD file_attributes = GetFileAttributes(utf16_file_name);
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return ((file_attributes != INVALID_FILE_ATTRIBUTES) && !(file_attributes & FILE_ATTRIBUTE_DIRECTORY)) ? true : false;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
@@ -2479,12 +2535,12 @@ C_MAKE_DEF bool
 c_make_directory_exists(const char *directory_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, directory_name);
     DWORD file_attributes = GetFileAttributes(utf16_directory_name);
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return ((file_attributes != INVALID_FILE_ATTRIBUTES) && (file_attributes & FILE_ATTRIBUTE_DIRECTORY)) ? true : false;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
@@ -2504,13 +2560,13 @@ C_MAKE_DEF bool
 c_make_create_directory(const char *directory_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, directory_name);
 
     if (!CreateDirectory(utf16_directory_name, 0))
     {
-        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+        c_make_end_temporary_memory(temp_memory);
 
         if (GetLastError() == ERROR_ALREADY_EXISTS)
         {
@@ -2520,7 +2576,7 @@ c_make_create_directory(const char *directory_name)
         return false;
     }
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return true;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
@@ -2542,9 +2598,9 @@ C_MAKE_DEF bool
 c_make_create_directory_recursively(const char *directory_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, directory_name);
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, directory_name);
     DWORD file_attributes = GetFileAttributes(utf16_directory_name);
 
     if ((file_attributes == INVALID_FILE_ATTRIBUTES) || !(file_attributes & FILE_ATTRIBUTE_DIRECTORY))
@@ -2554,23 +2610,23 @@ c_make_create_directory_recursively(const char *directory_name)
 
         if (parent_string.count > 0)
         {
-            const char *parent_directory = c_make_string_to_c_string(&_c_make_context.private_memory, parent_string);
+            const char *parent_directory = c_make_string_to_c_string(temp_memory.memory, parent_string);
 
             if (!c_make_create_directory_recursively(parent_directory))
             {
-                c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+                c_make_end_temporary_memory(temp_memory);
                 return false;
             }
         }
 
         if (!CreateDirectory(utf16_directory_name, 0) && (GetLastError() != ERROR_ALREADY_EXISTS))
         {
-            c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+            c_make_end_temporary_memory(temp_memory);
             return false;
         }
     }
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     struct stat stats;
 
@@ -2581,12 +2637,12 @@ c_make_create_directory_recursively(const char *directory_name)
 
         if (parent_string.count > 0)
         {
-            size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+            CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-            const char *parent_directory = c_make_string_to_c_string(&_c_make_context.private_memory, parent_string);
+            const char *parent_directory = c_make_string_to_c_string(temp_memory.memory, parent_string);
             bool result = c_make_create_directory_recursively(parent_directory);
 
-            c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+            c_make_end_temporary_memory(temp_memory);
 
             if (!result)
             {
@@ -2608,12 +2664,12 @@ C_MAKE_DEF bool
 c_make_read_entire_file(const char *file_name, CMakeString *content)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, file_name);
     HANDLE file = CreateFile(utf16_file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     if (file == INVALID_HANDLE_VALUE)
     {
@@ -2702,13 +2758,13 @@ C_MAKE_DEF bool
 c_make_write_entire_file(const char *file_name, CMakeString content)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, file_name);
     HANDLE file = CreateFile(utf16_file_name, GENERIC_WRITE, 0, 0,
                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     if (file == INVALID_HANDLE_VALUE)
     {
@@ -2763,18 +2819,18 @@ C_MAKE_DEF bool
 c_make_copy_file(const char *src_file_name, const char *dst_file_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_src_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, src_file_name);
-    LPWSTR utf16_dst_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, dst_file_name);
+    LPWSTR utf16_src_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, src_file_name);
+    LPWSTR utf16_dst_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, dst_file_name);
 
     if (!CopyFile(utf16_src_file_name, utf16_dst_file_name, FALSE))
     {
-        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+        c_make_end_temporary_memory(temp_memory);
         return false;
     }
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return true;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
@@ -2806,9 +2862,9 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
         return false;
     }
 
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    void *copy_buffer = c_make_memory_allocate(&_c_make_context.private_memory, 4096);
+    void *copy_buffer = c_make_memory_allocate(temp_memory.memory, 4096);
 
     size_t index = 0;
 
@@ -2826,7 +2882,7 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
 
         if ((read_bytes < 0) || ((size_t) read_bytes != size_to_read))
         {
-            c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+            c_make_end_temporary_memory(temp_memory);
             close(src_fd);
             close(dst_fd);
             return false;
@@ -2836,7 +2892,7 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
         index += size_to_read;
     }
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     close(dst_fd);
     close(src_fd);
@@ -2848,15 +2904,15 @@ C_MAKE_DEF bool
 c_make_rename_file(const char *old_file_name, const char *new_file_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_old_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, old_file_name);
-    LPWSTR utf16_new_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, new_file_name);
+    LPWSTR utf16_old_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, old_file_name);
+    LPWSTR utf16_new_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, new_file_name);
 
     bool result =
         MoveFileEx(utf16_old_file_name, utf16_new_file_name, MOVEFILE_REPLACE_EXISTING) ? true : false;
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return result;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
@@ -2873,9 +2929,9 @@ C_MAKE_DEF bool
 c_make_delete_file(const char *file_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(&_c_make_context.private_memory, file_name);
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, file_name);
 
     bool result = DeleteFile(utf16_file_name) ? true : false;
 
@@ -2884,7 +2940,7 @@ c_make_delete_file(const char *file_name)
         result = true;
     }
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return result;
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
@@ -2931,24 +2987,23 @@ c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name)
     CMakeString result = { 0, 0 };
 
 #if C_MAKE_PLATFORM_WINDOWS
-    wchar_t *utf16_variable_name = c_make_c_string_utf8_to_utf16(memory, variable_name);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(1, &memory);
+
+    wchar_t *utf16_variable_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, variable_name);
     DWORD variable_size = GetEnvironmentVariable(utf16_variable_name, 0, 0);
 
     if (variable_size > 0)
     {
-        size_t memory_used = c_make_memory_get_used(memory);
-        wchar_t *variable = (wchar_t *) c_make_memory_allocate(memory, sizeof(wchar_t) * variable_size);
+        wchar_t *variable = (wchar_t *) c_make_memory_allocate(temp_memory.memory, sizeof(wchar_t) * variable_size);
         DWORD ret = GetEnvironmentVariable(utf16_variable_name, variable, variable_size);
 
         if ((ret > 0) && (ret < variable_size))
         {
             result = c_make_string_utf16_to_utf8(memory, variable, ret);
         }
-        else
-        {
-            c_make_memory_set_used(memory, memory_used);
-        }
     }
+
+    c_make_end_temporary_memory(temp_memory);
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     (void) memory;
 
@@ -2966,35 +3021,35 @@ c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name)
 C_MAKE_DEF const char *
 c_make_find_program(const char *program_name)
 {
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
-    CMakeString paths = c_make_get_environment_variable(&_c_make_context.private_memory, "PATH");
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+    CMakeString paths = c_make_get_environment_variable(temp_memory.memory, "PATH");
 
     size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-    size_t inner_private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    size_t memory_used = c_make_memory_get_used(temp_memory.memory);
 
     while (paths.count)
     {
 #if C_MAKE_PLATFORM_WINDOWS
-        char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ';'));
+        char *path = c_make_string_to_c_string(temp_memory.memory, c_make_string_split_left(&paths, ';'));
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
-        char *path = c_make_string_to_c_string(&_c_make_context.private_memory, c_make_string_split_left(&paths, ':'));
+        char *path = c_make_string_to_c_string(temp_memory.memory, c_make_string_split_left(&paths, ':'));
 #endif
 
         char *full_path = c_make_c_string_path_concat(path, program_name);
 
-        c_make_memory_set_used(&_c_make_context.private_memory, inner_private_used);
+        c_make_memory_set_used(temp_memory.memory, memory_used);
 
         // TODO: is executable?
         if (c_make_file_exists(full_path))
         {
-            c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+            c_make_end_temporary_memory(temp_memory);
             return full_path;
         }
 
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
     }
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return 0;
 }
@@ -3220,12 +3275,12 @@ c_make_command_run(CMakeCommand command)
 
     if (_c_make_context.verbose)
     {
-        size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-        CMakeString command_string = c_make_command_to_string(command);
+        CMakeString command_string = c_make_command_to_string(temp_memory.memory, command);
         c_make_log(CMakeLogLevelRaw, "%" CMakeStringFmt "\n", CMakeStringArg(command_string));
 
-        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        c_make_end_temporary_memory(temp_memory);
     }
 
     CMakeProcessId process_id;
@@ -3240,30 +3295,28 @@ c_make_command_run(CMakeCommand command)
 
     PROCESS_INFORMATION process_info = { 0 };
 
-    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    CMakeString command_line = c_make_command_to_string(command);
+    CMakeString command_line = c_make_command_to_string(temp_memory.memory, command);
 
     int wide_command_line_size = 2 * command_line.count;
-    LPWSTR wide_command_line = (LPWSTR) c_make_memory_allocate(&_c_make_context.private_memory, wide_command_line_size);
+    LPWSTR wide_command_line = (LPWSTR) c_make_memory_allocate(temp_memory.memory, wide_command_line_size);
 
     int wide_count = MultiByteToWideChar(CP_UTF8, 0, command_line.data, command_line.count, wide_command_line, wide_command_line_size);
     wide_command_line[wide_count] = 0;
 
     BOOL result = CreateProcess(0, wide_command_line, 0, 0, TRUE, 0, 0, 0, &start_info, &process_info);
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
-    c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+    c_make_end_temporary_memory(temp_memory);
 
     if (!result)
     {
-        size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
-        CMakeString command_string = c_make_command_to_string(command);
+        CMakeString command_string = c_make_command_to_string(temp_memory.memory, command);
         c_make_log(CMakeLogLevelError, "could not run command (GetLastError = %lu): %" CMakeStringFmt "\n", GetLastError(), CMakeStringArg(command_string));
 
-        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        c_make_end_temporary_memory(temp_memory);
         return CMakeInvalidProcessId;
     }
 
@@ -3271,7 +3324,8 @@ c_make_command_run(CMakeCommand command)
 
     process_id = process_info.hProcess;
 #else
-    char **command_line = (char **) c_make_memory_allocate(&_c_make_context.private_memory, (command.count + 1) * sizeof(char *));
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+    char **command_line = (char **) c_make_memory_allocate(temp_memory.memory, (command.count + 1) * sizeof(char *));
 
     for (size_t i = 0; i < command.count; i += 1)
     {
@@ -3284,6 +3338,7 @@ c_make_command_run(CMakeCommand command)
 
     if (pid < 0)
     {
+        c_make_end_temporary_memory(temp_memory);
         // TODO: log error
         fprintf(stderr, "Could not fork\n");
         return CMakeInvalidProcessId;
@@ -3303,6 +3358,8 @@ c_make_command_run(CMakeCommand command)
         /* unreachable */
         return CMakeInvalidProcessId;
     }
+
+    c_make_end_temporary_memory(temp_memory);
 
     process_id = pid;
 #endif
@@ -3461,11 +3518,11 @@ int main(int argument_count, char **arguments)
     const char *build_directory = arguments[2];
     const char *config_file_name = c_make_c_string_path_concat(build_directory, "c_make.txt");
 
-    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
     CMakeString executable_path;
     executable_path.count = 4096;
-    executable_path.data = (char *) c_make_memory_allocate(&_c_make_context.private_memory, executable_path.count);
+    executable_path.data = (char *) c_make_memory_allocate(temp_memory.memory, executable_path.count);
 
 #if C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX
     ssize_t readlink(const char *, char *, size_t);
@@ -3495,14 +3552,15 @@ int main(int argument_count, char **arguments)
         executable_path = CMakeStringLiteral(".");
     }
 #elif C_MAKE_PLATFORM_WINDOWS
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
+    temp_memory = c_make_begin_temporary_memory(0, 0);
 
-    wchar_t *module_file_name = (wchar_t *) c_make_memory_allocate(&_c_make_context.private_memory, 2 * executable_path.count);
+    wchar_t *module_file_name = (wchar_t *) c_make_memory_allocate(temp_memory.memory, 2 * executable_path.count);
     DWORD ret = GetModuleFileName(0, module_file_name, executable_path.count);
 
     if (ret > 0)
     {
-        executable_path = CMakeCString(c_make_c_string_utf16_to_utf8(&_c_make_context.private_memory, module_file_name, ret));
+        executable_path = CMakeCString(c_make_c_string_utf16_to_utf8(temp_memory.memory, module_file_name, ret));
         c_make_string_split_right(&executable_path, '\\');
     }
     else
@@ -3525,7 +3583,7 @@ int main(int argument_count, char **arguments)
 
     const char *source_directory = c_make_string_to_c_string(&_c_make_context.permanent_memory, executable_path);
 
-    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+    c_make_end_temporary_memory(temp_memory);
 
     _c_make_context.build_path = build_directory;
     _c_make_context.source_path = source_directory;
@@ -3857,6 +3915,9 @@ int main(int argument_count, char **arguments)
             }
         }
 
+        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+        size_t memory_used = c_make_memory_get_used(temp_memory.memory);
+
         for (int i = 3; i < argument_count; i += 1)
         {
             CMakeString argument = CMakeCString(arguments[i]);
@@ -3877,14 +3938,14 @@ int main(int argument_count, char **arguments)
                     value.count -= 1;
                 }
 
-                size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+                c_make_memory_set_used(temp_memory.memory, memory_used);
 
-                c_make_config_set(c_make_string_to_c_string(&_c_make_context.public_memory, key),
-                                  c_make_string_to_c_string(&_c_make_context.public_memory, value));
-
-                c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+                c_make_config_set(c_make_string_to_c_string(temp_memory.memory, key),
+                                  c_make_string_to_c_string(temp_memory.memory, value));
             }
         }
+
+        c_make_end_temporary_memory(temp_memory);
 
         _c_make_entry_(CMakeTargetSetup);
 
