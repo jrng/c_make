@@ -264,6 +264,7 @@ typedef struct CMakeContext
     const char *source_path;
 
     CMakeConfig config;
+    CMakeMemory permanent_memory;
     CMakeMemory private_memory;
     CMakeMemory public_memory;
 
@@ -2156,7 +2157,7 @@ c_make_config_set(const char *_key, const char *value)
             size_t old_count = _c_make_context.config.allocated;
             _c_make_context.config.allocated += 16;
             _c_make_context.config.items =
-                (CMakeConfigEntry *) c_make_memory_reallocate(&_c_make_context.private_memory,
+                (CMakeConfigEntry *) c_make_memory_reallocate(&_c_make_context.permanent_memory,
                                                               _c_make_context.config.items,
                                                               old_count * sizeof(*_c_make_context.config.items),
                                                               _c_make_context.config.allocated * sizeof(*_c_make_context.config.items));
@@ -2165,10 +2166,10 @@ c_make_config_set(const char *_key, const char *value)
         entry = _c_make_context.config.items + _c_make_context.config.count;
         _c_make_context.config.count += 1;
 
-        entry->key = c_make_copy_string(&_c_make_context.private_memory, key);
+        entry->key = c_make_copy_string(&_c_make_context.permanent_memory, key);
     }
 
-    entry->value = c_make_copy_string(&_c_make_context.private_memory, CMakeCString(value));
+    entry->value = c_make_copy_string(&_c_make_context.permanent_memory, CMakeCString(value));
 
     if (c_make_strings_are_equal(entry->key, CMakeStringLiteral("target_platform")))
     {
@@ -3311,7 +3312,7 @@ c_make_command_run(CMakeCommand command)
         size_t old_count = _c_make_context.process_group.allocated;
         _c_make_context.process_group.allocated += 16;
         _c_make_context.process_group.items =
-            (CMakeProcess *) c_make_memory_reallocate(&_c_make_context.private_memory,
+            (CMakeProcess *) c_make_memory_reallocate(&_c_make_context.permanent_memory,
                                                       _c_make_context.process_group.items,
                                                       old_count * sizeof(*_c_make_context.process_group.items),
                                                       _c_make_context.process_group.allocated * sizeof(*_c_make_context.process_group.items));
@@ -3522,7 +3523,7 @@ int main(int argument_count, char **arguments)
     }
 #endif
 
-    const char *source_directory = c_make_string_to_c_string(&_c_make_context.public_memory, executable_path);
+    const char *source_directory = c_make_string_to_c_string(&_c_make_context.permanent_memory, executable_path);
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
 
