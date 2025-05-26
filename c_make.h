@@ -98,8 +98,10 @@
 
 #define c_make_string_concat(...) c_make_string_concat_va(CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 
-#define c_make_c_string_concat(...) c_make_c_string_concat_va(CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
-#define c_make_c_string_path_concat(...) c_make_c_string_path_concat_va(CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_c_string_concat(...) c_make_c_string_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_c_string_path_concat(...) c_make_c_string_path_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_c_string_concat_with_memory(memory, ...) c_make_c_string_concat_va(memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_c_string_path_concat_with_memory(memory, ...) c_make_c_string_path_concat_va(memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 
 #define c_make_command_append(command, ...) c_make_command_append_va(command, CMakeNArgs(__VA_ARGS__), __VA_ARGS__ )
 
@@ -122,6 +124,7 @@ typedef HANDLE CMakeProcessId;
 
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
 
+#  include <dirent.h>
 #  include <sys/wait.h>
 
 typedef pid_t CMakeProcessId;
@@ -248,6 +251,24 @@ typedef struct CMakeProcess
     bool exited;
     bool succeeded;
 } CMakeProcess;
+
+typedef struct CMakeDirectoryEntry
+{
+    CMakeString name;
+} CMakeDirectoryEntry;
+
+typedef struct CMakeDirectory
+{
+    CMakeDirectoryEntry entry;
+
+#if C_MAKE_PLATFORM_WINDOWS
+    bool first_read;
+    HANDLE handle;
+    WIN32_FIND_DATA find_data;
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    DIR *handle;
+#endif
+} CMakeDirectory;
 
 typedef struct CMakeProcessGroup
 {
@@ -466,6 +487,10 @@ C_MAKE_DEF bool c_make_load_config(const char *file_name);
 C_MAKE_DEF bool c_make_needs_rebuild(const char *output_file, size_t input_file_count, const char **input_files);
 C_MAKE_DEF bool c_make_needs_rebuild_single_source(const char *output_file, const char *input_file);
 
+C_MAKE_DEF CMakeDirectory *c_make_directory_open(CMakeMemory *memory, const char *directory_name);
+C_MAKE_DEF CMakeDirectoryEntry *c_make_directory_get_next_entry(CMakeMemory *memory, CMakeDirectory *directory);
+C_MAKE_DEF void c_make_directory_close(CMakeDirectory *directory);
+
 C_MAKE_DEF bool c_make_file_exists(const char *file_name);
 C_MAKE_DEF bool c_make_directory_exists(const char *directory_name);
 C_MAKE_DEF bool c_make_create_directory(const char *directory_name);
@@ -482,8 +507,8 @@ C_MAKE_DEF const char *c_make_find_program(const char *program_name);
 
 C_MAKE_DEF CMakeString c_make_string_concat_va(size_t count, ...);
 
-C_MAKE_DEF char *c_make_c_string_concat_va(size_t count, ...);
-C_MAKE_DEF char *c_make_c_string_path_concat_va(size_t count, ...);
+C_MAKE_DEF char *c_make_c_string_concat_va(CMakeMemory *memory, size_t count, ...);
+C_MAKE_DEF char *c_make_c_string_path_concat_va(CMakeMemory *memory, size_t count, ...);
 
 C_MAKE_DEF CMakeProcessId c_make_command_run(CMakeCommand command);
 C_MAKE_DEF CMakeProcessId c_make_command_run_and_reset(CMakeCommand *command);
@@ -2506,6 +2531,87 @@ c_make_needs_rebuild_single_source(const char *output_file, const char *input_fi
     return c_make_needs_rebuild(output_file, 1, &input_file);
 }
 
+C_MAKE_DEF CMakeDirectory *
+c_make_directory_open(CMakeMemory *memory, const char *directory_name)
+{
+    CMakeDirectory *directory = 0;
+
+#if C_MAKE_PLATFORM_WINDOWS
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    directory_name = c_make_c_string_concat_with_memory(temp_memory.memory, directory_name, "\\*");
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, directory_name);
+
+    WIN32_FIND_DATA find_data = { 0 };
+    HANDLE handle = FindFirstFile(utf16_directory_name, &find_data);
+
+    c_make_end_temporary_memory(temp_memory);
+
+    if (handle != INVALID_HANDLE_VALUE)
+    {
+        directory = (CMakeDirectory *) c_make_memory_allocate(memory, sizeof(*directory));
+        directory->first_read = true;
+        directory->handle = handle;
+        directory->find_data = find_data;
+    }
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    DIR *dir = opendir(directory_name);
+
+    if (dir)
+    {
+        directory = (CMakeDirectory *) c_make_memory_allocate(memory, sizeof(*directory));
+        directory->handle = dir;
+    }
+#endif
+
+    return directory;
+}
+
+C_MAKE_DEF CMakeDirectoryEntry *
+c_make_directory_get_next_entry(CMakeMemory *memory, CMakeDirectory *directory)
+{
+    CMakeDirectoryEntry *result = 0;
+
+#if C_MAKE_PLATFORM_WINDOWS
+    if (directory->first_read)
+    {
+        directory->first_read = false;
+    }
+    else
+    {
+        if (!FindNextFile(directory->handle, &directory->find_data))
+        {
+            return 0;
+        }
+    }
+
+    const char *entry_name = c_make_c_string_utf16_to_utf8(memory, directory->find_data.cFileName, wcslen(directory->find_data.cFileName));
+
+    result = &directory->entry;
+    result->name = CMakeCString(entry_name);
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    struct dirent *entry = readdir(directory->handle);
+
+    if (entry)
+    {
+        result = &directory->entry;
+        result->name = c_make_copy_string(memory, CMakeCString(entry->d_name));
+    }
+#endif
+
+    return result;
+}
+
+C_MAKE_DEF void
+c_make_directory_close(CMakeDirectory *directory)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    FindClose(directory->handle);
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    closedir(directory->handle);
+#endif
+}
+
 C_MAKE_DEF bool
 c_make_file_exists(const char *file_name)
 {
@@ -3091,7 +3197,7 @@ c_make_string_concat_va(size_t count, ...)
 }
 
 C_MAKE_DEF char *
-c_make_c_string_concat_va(size_t count, ...)
+c_make_c_string_concat_va(CMakeMemory *memory, size_t count, ...)
 {
     size_t length = 1;
 
@@ -3106,7 +3212,7 @@ c_make_c_string_concat_va(size_t count, ...)
 
     va_end(args);
 
-    char *result = (char *) c_make_memory_allocate(&_c_make_context.public_memory, length);
+    char *result = (char *) c_make_memory_allocate(memory, length);
     char *dst = result;
 
     va_start(args, count);
@@ -3125,7 +3231,7 @@ c_make_c_string_concat_va(size_t count, ...)
 }
 
 C_MAKE_DEF char *
-c_make_c_string_path_concat_va(size_t count, ...)
+c_make_c_string_path_concat_va(CMakeMemory *memory, size_t count, ...)
 {
     size_t length = 0;
 
@@ -3140,7 +3246,7 @@ c_make_c_string_path_concat_va(size_t count, ...)
 
     va_end(args);
 
-    char *result = (char *) c_make_memory_allocate(&_c_make_context.public_memory, length);
+    char *result = (char *) c_make_memory_allocate(memory, length);
     char *dst = result;
 
     va_start(args, count);
