@@ -324,6 +324,13 @@ typedef struct CMakeSoftwarePackage
     const char *root_path;
 } CMakeSoftwarePackage;
 
+typedef struct CMakeAndroidSdk
+{
+    CMakeSoftwarePackage ndk;
+    CMakeSoftwarePackage platforms;
+    CMakeSoftwarePackage build_tools;
+} CMakeAndroidSdk;
+
 static inline CMakeString
 c_make_make_string(void *data, size_t count)
 {
@@ -440,6 +447,7 @@ C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command
 C_MAKE_DEF CMakeString c_make_command_to_string(CMakeMemory *memory, CMakeCommand command);
 
 C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
+C_MAKE_DEF bool c_make_string_starts_with(CMakeString str, CMakeString prefix);
 C_MAKE_DEF CMakeString c_make_copy_string(CMakeMemory *memory, CMakeString str);
 C_MAKE_DEF CMakeString c_make_string_split_left(CMakeString *str, char c);
 C_MAKE_DEF CMakeString c_make_string_split_right(CMakeString *str, char c);
@@ -447,6 +455,8 @@ C_MAKE_DEF CMakeString c_make_string_split_right_path_separator(CMakeString *str
 C_MAKE_DEF CMakeString c_make_string_trim(CMakeString str);
 C_MAKE_DEF size_t c_make_string_find(CMakeString str, CMakeString pattern);
 C_MAKE_DEF char *c_make_string_to_c_string(CMakeMemory *memory, CMakeString str);
+
+C_MAKE_DEF bool c_make_parse_integer(CMakeString *str, int *value);
 
 C_MAKE_DEF CMakePlatform c_make_get_target_platform(void);
 C_MAKE_DEF CMakeArchitecture c_make_get_target_architecture(void);
@@ -464,6 +474,8 @@ C_MAKE_DEF const char *c_make_get_host_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_flags(void);
 
+C_MAKE_DEF bool c_make_find_best_software_package(const char *directory, CMakeString prefix, CMakeSoftwarePackage *software_package);
+
 C_MAKE_DEF bool c_make_find_visual_studio(CMakeSoftwarePackage *visual_studio_install);
 C_MAKE_DEF bool c_make_find_windows_sdk(CMakeSoftwarePackage *windows_sdk);
 C_MAKE_DEF bool c_make_get_visual_studio(CMakeSoftwarePackage *visual_studio_install);
@@ -472,6 +484,9 @@ C_MAKE_DEF const char *c_make_get_msvc_library_manager(CMakeArchitecture target_
 C_MAKE_DEF const char *c_make_get_msvc_compiler(CMakeArchitecture target_architecture);
 C_MAKE_DEF void c_make_command_append_msvc_compiler_flags(CMakeCommand *command);
 C_MAKE_DEF void c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture target_architecture);
+
+C_MAKE_DEF bool c_make_find_android_ndk(CMakeSoftwarePackage *android_ndk, bool logging);
+C_MAKE_DEF bool c_make_find_android_sdk(CMakeAndroidSdk *android_sdk, bool logging);
 
 C_MAKE_DEF bool c_make_setup_java(bool logging);
 
@@ -1322,6 +1337,17 @@ c_make_strings_are_equal(CMakeString a, CMakeString b)
     return true;
 }
 
+C_MAKE_DEF bool
+c_make_string_starts_with(CMakeString str, CMakeString prefix)
+{
+    if (str.count < prefix.count)
+    {
+        return false;
+    }
+
+    return c_make_strings_are_equal(c_make_make_string(str.data, prefix.count), prefix);
+}
+
 C_MAKE_DEF CMakeString
 c_make_copy_string(CMakeMemory *memory, CMakeString str)
 {
@@ -1477,6 +1503,43 @@ c_make_string_to_c_string(CMakeMemory *memory, CMakeString str)
     result[str.count] = 0;
 
     return result;
+}
+
+C_MAKE_DEF bool
+c_make_parse_integer(CMakeString *str, int *value)
+{
+    int val = 0;
+    size_t index = 0;
+    bool has_sign = false;
+
+    if ((index < str->count) && (str->data[index] == '-'))
+    {
+        has_sign = true;
+        index += 1;
+    }
+
+    if ((index >= str->count) || (str->data[index] < '0') || (str->data[index] > '9'))
+    {
+        return false;
+    }
+
+    while ((index < str->count) && (str->data[index] >= '0') && (str->data[index] <= '9'))
+    {
+        int digit = str->data[index] - '0';
+        val = 10 * val + digit;
+        index += 1;
+    }
+
+    if (has_sign)
+    {
+        val = -val;
+    }
+
+    *value = val;
+    str->count -= index;
+    str->data += index;
+
+    return true;
 }
 
 C_MAKE_DEF CMakePlatform
@@ -1762,6 +1825,100 @@ c_make_get_target_cpp_flags(void)
     }
 
     return result;
+}
+
+C_MAKE_DEF bool
+c_make_find_best_software_package(const char *directory, CMakeString prefix, CMakeSoftwarePackage *software_package)
+{
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    const char *best_version = 0;
+    int best_v0 = 0, best_v1 = 0, best_v2 = 0, best_v3 = 0;
+
+    CMakeDirectory *dir = c_make_directory_open(temp_memory.memory, directory);
+
+    if (dir)
+    {
+        CMakeDirectoryEntry *entry;
+
+        while ((entry = c_make_directory_get_next_entry(temp_memory.memory, dir)))
+        {
+            CMakeString name = entry->name;
+
+            if (!c_make_string_starts_with(name, prefix))
+            {
+                continue;
+            }
+
+            name.count -= prefix.count;
+            name.data  += prefix.count;
+
+            int v0 = 0, v1 = 0, v2 = 0, v3 = 0;
+
+            if ((name.count > 0) && c_make_parse_integer(&name, &v0))
+            {
+                if ((name.count > 0) && (name.data[0] == '.'))
+                {
+                    name.count -= 1;
+                    name.data  += 1;
+
+                    if ((name.count == 0) || !c_make_parse_integer(&name, &v1))
+                    {
+                        continue;
+                    }
+
+                    if ((name.count > 0) && (name.data[0] == '.'))
+                    {
+                        name.count -= 1;
+                        name.data  += 1;
+
+                        if ((name.count == 0) || !c_make_parse_integer(&name, &v2))
+                        {
+                            continue;
+                        }
+
+                        if ((name.count > 0) && (name.data[0] == '.'))
+                        {
+                            name.count -= 1;
+                            name.data  += 1;
+
+                            if ((name.count == 0) || !c_make_parse_integer(&name, &v3))
+                            {
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                if (name.count == 0)
+                {
+                    if (((v0 > best_v0) || ((v0 == best_v0) && ((v1 > best_v1) || ((v1 == best_v1) && ((v2 > best_v2) || ((v2 == best_v2) && (v3 > best_v3))))))))
+                    {
+                        best_v0 = v0;
+                        best_v1 = v1;
+                        best_v2 = v2;
+                        best_v3 = v3;
+                        best_version = c_make_string_to_c_string(temp_memory.memory, entry->name);
+                    }
+                }
+            }
+        }
+
+        c_make_directory_close(dir);
+    }
+
+    if (!best_version)
+    {
+        c_make_end_temporary_memory(temp_memory);
+        return false;
+    }
+
+    software_package->version = c_make_string_to_c_string(&_c_make_context.public_memory, CMakeCString(best_version));
+    software_package->root_path = c_make_c_string_path_concat_with_memory(&_c_make_context.public_memory, directory, best_version);
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return true;
 }
 
 C_MAKE_DEF bool
@@ -2134,6 +2291,129 @@ c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture
             c_make_c_string_concat("-libpath:",
                 c_make_c_string_path_concat(windows_sdk.root_path, "Lib", windows_sdk.version, "um", arch)));
     }
+}
+
+C_MAKE_DEF bool
+c_make_find_android_ndk(CMakeSoftwarePackage *android_ndk, bool logging)
+{
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    CMakeString ndk_root_path = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "ANDROID_NDK"));
+
+    if (!ndk_root_path.count)
+    {
+        ndk_root_path = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "ANDROID_NDK_HOME"));
+    }
+
+    if (!ndk_root_path.count)
+    {
+        ndk_root_path = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "ANDROID_NDK_ROOT"));
+    }
+
+    if (!ndk_root_path.count)
+    {
+        CMakeString sdk_root_path = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "ANDROID_HOME"));
+
+        if (!sdk_root_path.count)
+        {
+            sdk_root_path = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "ANDROID_SDK_ROOT"));
+        }
+
+        if (sdk_root_path.count)
+        {
+            const char *sdk_root_path_c = c_make_string_to_c_string(temp_memory.memory, sdk_root_path);
+
+            if (c_make_find_best_software_package(c_make_c_string_path_concat(sdk_root_path_c, "ndk"), CMakeStringLiteral(""), android_ndk))
+            {
+                c_make_end_temporary_memory(temp_memory);
+                return true;
+            }
+        }
+    }
+
+    if (!ndk_root_path.count)
+    {
+        c_make_end_temporary_memory(temp_memory);
+
+        if (logging)
+        {
+            c_make_log(CMakeLogLevelError, "could not find android ndk; try setting ANDROID_NDK to its path\n");
+        }
+
+        return false;
+    }
+
+    android_ndk->root_path = c_make_string_to_c_string(&_c_make_context.public_memory, ndk_root_path);
+
+    // TODO: check if that matches a version string
+    CMakeString ndk_version = c_make_string_split_right_path_separator(&ndk_root_path);
+
+    android_ndk->version = c_make_string_to_c_string(&_c_make_context.public_memory, ndk_version);
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return true;
+}
+
+C_MAKE_DEF bool
+c_make_find_android_sdk(CMakeAndroidSdk *android_sdk, bool logging)
+{
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    CMakeString sdk_root_path = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "ANDROID_HOME"));
+
+    if (!sdk_root_path.count)
+    {
+        sdk_root_path = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "ANDROID_SDK_ROOT"));
+    }
+
+    if (!sdk_root_path.count)
+    {
+        c_make_end_temporary_memory(temp_memory);
+
+        if (logging)
+        {
+            c_make_log(CMakeLogLevelError, "could not find android sdk; try setting ANDROID_HOME to its path\n");
+        }
+
+        return false;
+    }
+
+    const char *sdk_root_path_c = c_make_string_to_c_string(temp_memory.memory, sdk_root_path);
+
+    if (!c_make_find_best_software_package(c_make_c_string_path_concat(sdk_root_path_c, "platforms"), CMakeStringLiteral("android-"), &android_sdk->platforms))
+    {
+        c_make_end_temporary_memory(temp_memory);
+
+        if (logging)
+        {
+            c_make_log(CMakeLogLevelError, "could not find a version of platforms in the android sdk path\n");
+        }
+
+        return false;
+    }
+
+    if (!c_make_find_best_software_package(c_make_c_string_path_concat(sdk_root_path_c, "build-tools"), CMakeStringLiteral(""), &android_sdk->build_tools))
+    {
+        c_make_end_temporary_memory(temp_memory);
+
+        if (logging)
+        {
+            c_make_log(CMakeLogLevelError, "could not find a version of build-tools in the android sdk path\n");
+        }
+
+        return false;
+    }
+
+    if (!c_make_find_android_ndk(&android_sdk->ndk, logging))
+    {
+        c_make_end_temporary_memory(temp_memory);
+        return false;
+    }
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return true;
 }
 
 C_MAKE_DEF bool
@@ -4097,6 +4377,52 @@ int main(int argument_count, char **arguments)
 
                     c_make_memory_set_used(&_c_make_context.public_memory, public_used);
                 }
+            }
+            else if (c_make_get_target_platform() == CMakePlatformAndroid)
+            {
+                size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+
+                CMakeSoftwarePackage android_ndk;
+
+                if (c_make_find_android_ndk(&android_ndk, true))
+                {
+                    const char *host_tag = "";
+
+                    switch (c_make_get_host_platform())
+                    {
+                        case CMakePlatformAndroid: break;
+                        case CMakePlatformFreeBsd: break;
+                        case CMakePlatformWindows: host_tag = "windows-x86_64"; break; // TODO: this is only for x86_64 hosts
+                        case CMakePlatformLinux:   host_tag = "linux-x86_64";   break; // TODO: this is only for x86_64 hosts
+                        case CMakePlatformMacOs:   host_tag = "darwin-x86_64";  break; // This is for both x86_64 and aarch64 hosts
+                        case CMakePlatformWeb:     break;
+                    }
+
+                    const char *toolchain_path = c_make_c_string_path_concat(android_ndk.root_path, "toolchains", "llvm", "prebuilt", host_tag);
+
+                    CMakeConfigValue target_ar = c_make_config_get("target_ar");
+
+                    if (!target_ar.is_valid)
+                    {
+                        c_make_config_set("target_ar", c_make_c_string_path_concat(toolchain_path, "bin", "llvm-ar"));
+                    }
+
+                    CMakeConfigValue target_c_compiler = c_make_config_get("target_c_compiler");
+
+                    if (!target_c_compiler.is_valid)
+                    {
+                        c_make_config_set("target_c_compiler", c_make_c_string_path_concat(toolchain_path, "bin", "clang"));
+                    }
+
+                    CMakeConfigValue target_cpp_compiler = c_make_config_get("target_cpp_compiler");
+
+                    if (!target_cpp_compiler.is_valid)
+                    {
+                        c_make_config_set("target_cpp_compiler", c_make_c_string_path_concat(toolchain_path, "bin", "clang++"));
+                    }
+                }
+
+                c_make_memory_set_used(&_c_make_context.public_memory, public_used);
             }
         }
 

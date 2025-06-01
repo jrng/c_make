@@ -12,6 +12,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Bootstrap c_make
         run: clang -o c_make c_make.c
+      - name: Setup c_make for android
+        run: ./c_make setup build-android target_platform=android --verbose
       - name: Setup c_make
         run: ./c_make setup build --verbose
       - name: Build c_make
@@ -23,6 +25,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Bootstrap c_make
         run: cc -o c_make c_make.c
+      - name: Setup c_make for android
+        run: ./c_make setup build-android target_platform=android --verbose
       - name: Setup c_make
         run: ./c_make setup build --verbose
       - name: Build c_make
@@ -37,6 +41,9 @@ jobs:
         run: |
           call "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvars64.bat"
           cl -nologo -Fec_make.exe -Foc_make.obj c_make.c
+      - name: Setup c_make for android
+        shell: cmd
+        run: c_make.exe setup build-android target_platform=android --verbose
       - name: Setup c_make
         shell: cmd
         run: c_make.exe setup build --verbose
