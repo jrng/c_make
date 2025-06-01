@@ -318,11 +318,11 @@ typedef struct CMakeContext
     const char *color_bright_white;
 } CMakeContext;
 
-typedef struct CMakeWindowsSoftwarePackage
+typedef struct CMakeSoftwarePackage
 {
     const char *version;
     const char *root_path;
-} CMakeWindowsSoftwarePackage;
+} CMakeSoftwarePackage;
 
 static inline CMakeString
 c_make_make_string(void *data, size_t count)
@@ -464,10 +464,10 @@ C_MAKE_DEF const char *c_make_get_host_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_flags(void);
 
-C_MAKE_DEF bool c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install);
-C_MAKE_DEF bool c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk);
-C_MAKE_DEF bool c_make_get_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install);
-C_MAKE_DEF bool c_make_get_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk);
+C_MAKE_DEF bool c_make_find_visual_studio(CMakeSoftwarePackage *visual_studio_install);
+C_MAKE_DEF bool c_make_find_windows_sdk(CMakeSoftwarePackage *windows_sdk);
+C_MAKE_DEF bool c_make_get_visual_studio(CMakeSoftwarePackage *visual_studio_install);
+C_MAKE_DEF bool c_make_get_windows_sdk(CMakeSoftwarePackage *windows_sdk);
 C_MAKE_DEF const char *c_make_get_msvc_library_manager(CMakeArchitecture target_architecture);
 C_MAKE_DEF const char *c_make_get_msvc_compiler(CMakeArchitecture target_architecture);
 C_MAKE_DEF void c_make_command_append_msvc_compiler_flags(CMakeCommand *command);
@@ -1765,7 +1765,7 @@ c_make_get_target_cpp_flags(void)
 }
 
 C_MAKE_DEF bool
-c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
+c_make_find_visual_studio(CMakeSoftwarePackage *visual_studio_install)
 {
 #if C_MAKE_PLATFORM_WINDOWS
 
@@ -1868,7 +1868,7 @@ c_make_find_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
 }
 
 C_MAKE_DEF bool
-c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
+c_make_find_windows_sdk(CMakeSoftwarePackage *windows_sdk)
 {
 #if C_MAKE_PLATFORM_WINDOWS
     HKEY installed_roots_key;
@@ -1979,7 +1979,7 @@ c_make_find_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
 }
 
 C_MAKE_DEF bool
-c_make_get_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
+c_make_get_visual_studio(CMakeSoftwarePackage *visual_studio_install)
 {
 #if C_MAKE_PLATFORM_WINDOWS
     CMakeConfigValue visual_studio_version = c_make_config_get("visual_studio_version");
@@ -2002,7 +2002,7 @@ c_make_get_visual_studio(CMakeWindowsSoftwarePackage *visual_studio_install)
 }
 
 C_MAKE_DEF bool
-c_make_get_windows_sdk(CMakeWindowsSoftwarePackage *windows_sdk)
+c_make_get_windows_sdk(CMakeSoftwarePackage *windows_sdk)
 {
 #if C_MAKE_PLATFORM_WINDOWS
     CMakeConfigValue windows_sdk_version = c_make_config_get("windows_sdk_version");
@@ -2028,7 +2028,7 @@ C_MAKE_DEF const char *
 c_make_get_msvc_library_manager(CMakeArchitecture target_architecture)
 {
     const char *result = 0;
-    CMakeWindowsSoftwarePackage visual_studio_install;
+    CMakeSoftwarePackage visual_studio_install;
 
     if (c_make_get_visual_studio(&visual_studio_install))
     {
@@ -2050,7 +2050,7 @@ C_MAKE_DEF const char *
 c_make_get_msvc_compiler(CMakeArchitecture target_architecture)
 {
     const char *result = 0;
-    CMakeWindowsSoftwarePackage visual_studio_install;
+    CMakeSoftwarePackage visual_studio_install;
 
     if (c_make_get_visual_studio(&visual_studio_install))
     {
@@ -2071,7 +2071,7 @@ c_make_get_msvc_compiler(CMakeArchitecture target_architecture)
 C_MAKE_DEF void
 c_make_command_append_msvc_compiler_flags(CMakeCommand *command)
 {
-    CMakeWindowsSoftwarePackage visual_studio_install;
+    CMakeSoftwarePackage visual_studio_install;
 
     if (c_make_get_visual_studio(&visual_studio_install))
     {
@@ -2081,7 +2081,7 @@ c_make_command_append_msvc_compiler_flags(CMakeCommand *command)
                                             visual_studio_install.version, "include")));
     }
 
-    CMakeWindowsSoftwarePackage windows_sdk;
+    CMakeSoftwarePackage windows_sdk;
 
     if (c_make_get_windows_sdk(&windows_sdk))
     {
@@ -2113,7 +2113,7 @@ c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture
         arch = "arm64";
     }
 
-    CMakeWindowsSoftwarePackage visual_studio_install;
+    CMakeSoftwarePackage visual_studio_install;
 
     if (c_make_get_visual_studio(&visual_studio_install))
     {
@@ -2123,7 +2123,7 @@ c_make_command_append_msvc_linker_flags(CMakeCommand *command, CMakeArchitecture
                                             visual_studio_install.version, "lib", arch)));
     }
 
-    CMakeWindowsSoftwarePackage windows_sdk;
+    CMakeSoftwarePackage windows_sdk;
 
     if (c_make_get_windows_sdk(&windows_sdk))
     {
