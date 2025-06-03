@@ -96,6 +96,8 @@
 #define CMakeStringLiteral(str) c_make_make_string((char *) (str), sizeof(str) - 1)
 #define CMakeCString(str) c_make_make_string((char *) (str), c_make_get_c_string_length(str))
 
+#define c_make_string_replace_all(str, pattern, replace) c_make_string_replace_all_with_memory(&_c_make_context.public_memory, str, pattern, replace)
+
 #define c_make_string_concat(...) c_make_string_concat_va(CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 
 #define c_make_c_string_concat(...) c_make_c_string_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
@@ -218,6 +220,13 @@ typedef struct CMakeString
 
 #define CMakeStringFmt ".*s"
 #define CMakeStringArg(str) (int) (str).count, (str).data
+
+typedef struct CMakeStringArray
+{
+    size_t count;
+    size_t allocated;
+    CMakeString *items;
+} CMakeStringArray;
 
 typedef struct CMakeCommand
 {
@@ -454,6 +463,7 @@ C_MAKE_DEF CMakeString c_make_string_split_right(CMakeString *str, char c);
 C_MAKE_DEF CMakeString c_make_string_split_right_path_separator(CMakeString *str);
 C_MAKE_DEF CMakeString c_make_string_trim(CMakeString str);
 C_MAKE_DEF size_t c_make_string_find(CMakeString str, CMakeString pattern);
+C_MAKE_DEF CMakeString c_make_string_replace_all_with_memory(CMakeMemory *memory, CMakeString str, CMakeString pattern, CMakeString replace);
 C_MAKE_DEF char *c_make_string_to_c_string(CMakeMemory *memory, CMakeString str);
 
 C_MAKE_DEF bool c_make_parse_integer(CMakeString *str, int *value);
@@ -1488,6 +1498,70 @@ c_make_string_find(CMakeString str, CMakeString pattern)
     }
 
     return index;
+}
+
+C_MAKE_DEF CMakeString
+c_make_string_replace_all_with_memory(CMakeMemory *memory, CMakeString str, CMakeString pattern, CMakeString replace)
+{
+    CMakeStringArray parts = { 0, 0, 0 };
+    CMakeString result = { 0, 0 };
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(1, &memory);
+
+    size_t index = c_make_string_find(str, pattern);
+
+    while (index < str.count)
+    {
+        CMakeString head = c_make_make_string(str.data, index);
+
+        size_t tail_start = index + pattern.count;
+
+        str.data  += tail_start;
+        str.count -= tail_start;
+
+        result.count += index + replace.count;
+
+        if (parts.count == parts.allocated)
+        {
+            size_t old_count = parts.allocated;
+            parts.allocated += 8;
+            parts.items =
+                (CMakeString *) c_make_memory_reallocate(temp_memory.memory, parts.items,
+                                                         old_count * sizeof(*parts.items),
+                                                         parts.allocated * sizeof(*parts.items));
+        }
+
+        parts.items[parts.count] = head;
+        parts.count += 1;
+
+        index = c_make_string_find(str, pattern);
+    }
+
+    result.count += str.count;
+    result.data = (char *) c_make_memory_allocate(memory, result.count);
+    char *dst = result.data;
+
+    for (size_t i = 0; i < parts.count; i += 1)
+    {
+        for (size_t j = 0; j < parts.items[i].count; j += 1)
+        {
+            *dst++ = parts.items[i].data[j];
+        }
+
+        for (size_t j = 0; j < replace.count; j += 1)
+        {
+            *dst++ = replace.data[j];
+        }
+    }
+
+    for (size_t j = 0; j < str.count; j += 1)
+    {
+        *dst++ = str.data[j];
+    }
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return result;
 }
 
 C_MAKE_DEF char *
