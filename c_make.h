@@ -353,7 +353,10 @@ static inline size_t
 c_make_get_c_string_length(const char *str)
 {
     size_t length = 0;
-    while (*str++) length += 1;
+    if (str)
+    {
+        while (*str++) length += 1;
+    }
     return length;
 }
 
@@ -1274,7 +1277,14 @@ c_make_command_to_string(CMakeMemory *memory, CMakeCommand command)
     for (size_t i = 0; i < command.count; i += 1)
     {
         const char *str = command.items[i];
-        result.count += c_make_get_c_string_length(str) + 3;
+        if (str)
+        {
+            result.count += c_make_get_c_string_length(str) + 3;
+        }
+        else
+        {
+            result.count += sizeof("(nil)");
+        }
     }
 
     if (result.count > 0)
@@ -1287,36 +1297,44 @@ c_make_command_to_string(CMakeMemory *memory, CMakeCommand command)
             bool needs_escaping = false;
             const char *str = command.items[i];
 
-            while (*str)
+            if (str)
             {
-#if C_MAKE_PLATFORM_WINDOWS
-                if ((*str == ',') || (*str == ';') || (*str == '=') || (*str == ' ') || (*str == '\t'))
-#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
-                if ((*str == ' ') || (*str == '\t') || (*str == '\n'))
-#endif
+                while (*str)
                 {
-                    needs_escaping = true;
-                    break;
+#if C_MAKE_PLATFORM_WINDOWS
+                    if ((*str == ',') || (*str == ';') || (*str == '=') || (*str == ' ') || (*str == '\t'))
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+                    if ((*str == ' ') || (*str == '\t') || (*str == '\n'))
+#endif
+                    {
+                        needs_escaping = true;
+                        break;
+                    }
+
+                    str += 1;
                 }
 
-                str += 1;
-            }
+                if (needs_escaping)
+                {
+                    *dst++ = '"';
 
-            if (needs_escaping)
-            {
-                *dst++ = '"';
+                    const char *src = command.items[i];
+                    while (*src) *dst++ = *src++;
 
-                const char *src = command.items[i];
-                while (*src) *dst++ = *src++;
+                    *dst++ = '"';
+                }
+                else
+                {
+                    const char *src = command.items[i];
+                    while (*src) *dst++ = *src++;
 
-                *dst++ = '"';
+                    result.count -= 2;
+                }
             }
             else
             {
-                const char *src = command.items[i];
+                const char *src = "(nil)";
                 while (*src) *dst++ = *src++;
-
-                result.count -= 2;
             }
 
             *dst++ = ' ';
@@ -3805,6 +3823,14 @@ c_make_command_run(CMakeCommand command)
         c_make_log(CMakeLogLevelRaw, "%" CMakeStringFmt "\n", CMakeStringArg(command_string));
 
         c_make_end_temporary_memory(temp_memory);
+    }
+
+    for (size_t i = 0; i < command.count; i += 1)
+    {
+        if (!command.items[i])
+        {
+            return CMakeInvalidProcessId;
+        }
     }
 
     CMakeProcessId process_id;
