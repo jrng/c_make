@@ -501,6 +501,17 @@ C_MAKE_DEF void c_make_command_append_msvc_linker_flags(CMakeCommand *command, C
 C_MAKE_DEF bool c_make_find_android_ndk(CMakeSoftwarePackage *android_ndk, bool logging);
 C_MAKE_DEF bool c_make_find_android_sdk(CMakeAndroidSdk *android_sdk, bool logging);
 
+C_MAKE_DEF const char *c_make_get_android_aapt(void);
+C_MAKE_DEF const char *c_make_get_android_platform_jar(void);
+C_MAKE_DEF const char *c_make_get_android_zipalign(void);
+
+C_MAKE_DEF bool c_make_setup_android(bool logging);
+
+C_MAKE_DEF const char *c_make_get_java_jar(void);
+C_MAKE_DEF const char *c_make_get_java_jarsigner(void);
+C_MAKE_DEF const char *c_make_get_java_javac(void);
+C_MAKE_DEF const char *c_make_get_java_keytool(void);
+
 C_MAKE_DEF bool c_make_setup_java(bool logging);
 
 C_MAKE_DEF void c_make_config_set(const char *key, const char *value);
@@ -529,6 +540,7 @@ C_MAKE_DEF bool c_make_delete_file(const char *file_name);
 C_MAKE_DEF bool c_make_has_slash_or_backslash(const char *path);
 C_MAKE_DEF CMakeString c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name);
 C_MAKE_DEF const char *c_make_find_program(const char *program_name);
+C_MAKE_DEF const char *c_make_get_executable(const char *config_name, const char *fallback_executable);
 
 C_MAKE_DEF CMakeString c_make_string_concat_va(size_t count, ...);
 
@@ -2508,6 +2520,119 @@ c_make_find_android_sdk(CMakeAndroidSdk *android_sdk, bool logging)
     return true;
 }
 
+C_MAKE_DEF const char *
+c_make_get_android_aapt(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("android_aapt_executable", "aapt.exe");
+#else
+    return c_make_get_executable("android_aapt_executable", "aapt");
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_get_android_platform_jar(void)
+{
+    const char *result = 0;
+
+    CMakeConfigValue value = c_make_config_get("android_platform_jar");
+
+    if (value.is_valid)
+    {
+        result = value.val;
+    }
+
+    return result;
+}
+
+C_MAKE_DEF const char *
+c_make_get_android_zipalign(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("android_zipalign_executable", "zipalign.exe");
+#else
+    return c_make_get_executable("android_zipalign_executable", "zipalign");
+#endif
+}
+
+C_MAKE_DEF bool
+c_make_setup_android(bool logging)
+{
+    if (logging)
+    {
+        c_make_log(CMakeLogLevelInfo, "setup android\n");
+    }
+
+    CMakeAndroidSdk android_sdk;
+
+    if (!c_make_find_android_sdk(&android_sdk, logging))
+    {
+        return false;
+    }
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    const char *android_aapt_executable_name     = "aapt.exe";
+    const char *android_zipalign_executable_name = "zipalign.exe";
+#else
+    const char *android_aapt_executable_name     = "aapt";
+    const char *android_zipalign_executable_name = "zipalign";
+#endif
+
+    const char *android_aapt_executable     = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_aapt_executable_name);
+    const char *android_platform_jar        = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.platforms.root_path, "android.jar");
+    const char *android_zipalign_executable = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_zipalign_executable_name);
+
+    c_make_config_set("android_aapt_executable", android_aapt_executable);
+    c_make_config_set("android_platform_jar", android_platform_jar);
+    c_make_config_set("android_zipalign_executable", android_zipalign_executable);
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return true;
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_jar(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("java_jar_executable", "jar.exe");
+#else
+    return c_make_get_executable("java_jar_executable", "jar");
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_jarsigner(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("java_jarsigner_executable", "jarsigner.exe");
+#else
+    return c_make_get_executable("java_jarsigner_executable", "jarsigner");
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_javac(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("java_javac_executable", "javac.exe");
+#else
+    return c_make_get_executable("java_javac_executable", "javac");
+#endif
+}
+
+C_MAKE_DEF const char *
+c_make_get_java_keytool(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("java_keytool_executable", "keytool.exe");
+#else
+    return c_make_get_executable("java_keytool_executable", "keytool");
+#endif
+}
+
 C_MAKE_DEF bool
 c_make_setup_java(bool logging)
 {
@@ -3596,6 +3721,29 @@ c_make_find_program(const char *program_name)
     return 0;
 }
 
+C_MAKE_DEF const char *
+c_make_get_executable(const char *config_name, const char *fallback_executable)
+{
+    CMakeConfigValue value = c_make_config_get(config_name);
+    const char *result = 0;
+
+    if (value.is_valid)
+    {
+        result = value.val;
+
+        if (!c_make_has_slash_or_backslash(result))
+        {
+            result = c_make_find_program(result);
+        }
+    }
+    else
+    {
+        result = c_make_find_program(fallback_executable);
+    }
+
+    return result;
+}
+
 C_MAKE_DEF CMakeString
 c_make_string_concat_va(size_t count, ...)
 {
@@ -4023,33 +4171,36 @@ print_help(const char *program_name)
     fprintf(stderr, "want can be stored in there, but there are some options that have special\n");
     fprintf(stderr, "meaning to c_make:\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "    build_type                 Build type. Either 'debug', 'reldebug' or 'release'.\n");
-    fprintf(stderr, "                               Default: 'debug'\n");
-    fprintf(stderr, "    host_ar                    Path to or name of the host archive/library program.\n");
-    fprintf(stderr, "    host_c_compiler            Path to or name of the host c compiler.\n");
-    fprintf(stderr, "    host_cpp_compiler          Path to or name of the host c++ compiler.\n");
-    fprintf(stderr, "    install_prefix             Install prefix. Defaults to '/usr/local'.\n");
-    fprintf(stderr, "    java_jar_executable        Path to the java jar tool.\n");
-    fprintf(stderr, "    java_jarsigner_executable  Path to the java jarsigner tool.\n");
-    fprintf(stderr, "    java_javac_executable      Path to the java compiler (javac).\n");
-    fprintf(stderr, "    java_keytool_executable    Path to the java keytool.\n");
-    fprintf(stderr, "    target_architecture        Architecture of the target. Either 'amd64', 'aarch64',\n");
-    fprintf(stderr, "                               'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
-    fprintf(stderr, "                               host architecture.\n");
-    fprintf(stderr, "    target_ar                  Path to or name of the target archive/library program.\n");
-    fprintf(stderr, "    target_c_compiler          Path to or name of the target c compiler.\n");
-    fprintf(stderr, "    target_c_flags             Flags for the target c build.\n");
-    fprintf(stderr, "    target_cpp_compiler        Path to or name of the target c++ compiler.\n");
-    fprintf(stderr, "    target_cpp_flags           Flags for the target c++ build.\n");
-    fprintf(stderr, "    target_platform            Platform of the target. Either 'android', 'freebsd',\n");
-    fprintf(stderr, "                               'windows', 'linux', 'macos' or 'web'. The default is\n");
-    fprintf(stderr, "                               the host platform.\n");
-    fprintf(stderr, "    visual_studio_root_path    Path to the visual studio install. This should be the directory\n");
-    fprintf(stderr, "                               in which you find 'VC\\Tools\\MSVC\\<version>'.\n");
-    fprintf(stderr, "    visual_studio_version      The version of the visual studio install.\n");
-    fprintf(stderr, "    windows_sdk_root_path      Path to the windows sdk. This should be the directory\n");
-    fprintf(stderr, "                               in which you find 'bin', 'Include' and 'Lib'.\n");
-    fprintf(stderr, "    windows_sdk_version        The version of the windows sdk.\n");
+    fprintf(stderr, "    android_aapt_executable      Path to the android aapt executable.\n");
+    fprintf(stderr, "    android_platform_jar         Path to the android platforms 'android.jar'.\n");
+    fprintf(stderr, "    android_zipalign_executable  Path to the android zipalign executable.\n");
+    fprintf(stderr, "    build_type                   Build type. Either 'debug', 'reldebug' or 'release'.\n");
+    fprintf(stderr, "                                 Default: 'debug'\n");
+    fprintf(stderr, "    host_ar                      Path to or name of the host archive/library program.\n");
+    fprintf(stderr, "    host_c_compiler              Path to or name of the host c compiler.\n");
+    fprintf(stderr, "    host_cpp_compiler            Path to or name of the host c++ compiler.\n");
+    fprintf(stderr, "    install_prefix               Install prefix. Defaults to '/usr/local'.\n");
+    fprintf(stderr, "    java_jar_executable          Path to the java jar executable.\n");
+    fprintf(stderr, "    java_jarsigner_executable    Path to the java jarsigner executable.\n");
+    fprintf(stderr, "    java_javac_executable        Path to the java compiler (javac).\n");
+    fprintf(stderr, "    java_keytool_executable      Path to the java keytool executable.\n");
+    fprintf(stderr, "    target_architecture          Architecture of the target. Either 'amd64', 'aarch64',\n");
+    fprintf(stderr, "                                 'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
+    fprintf(stderr, "                                 host architecture.\n");
+    fprintf(stderr, "    target_ar                    Path to or name of the target archive/library program.\n");
+    fprintf(stderr, "    target_c_compiler            Path to or name of the target c compiler.\n");
+    fprintf(stderr, "    target_c_flags               Flags for the target c build.\n");
+    fprintf(stderr, "    target_cpp_compiler          Path to or name of the target c++ compiler.\n");
+    fprintf(stderr, "    target_cpp_flags             Flags for the target c++ build.\n");
+    fprintf(stderr, "    target_platform              Platform of the target. Either 'android', 'freebsd',\n");
+    fprintf(stderr, "                                 'windows', 'linux', 'macos' or 'web'. The default is\n");
+    fprintf(stderr, "                                 the host platform.\n");
+    fprintf(stderr, "    visual_studio_root_path      Path to the visual studio install. This should be the directory\n");
+    fprintf(stderr, "                                 in which you find 'VC\\Tools\\MSVC\\<version>'.\n");
+    fprintf(stderr, "    visual_studio_version        The version of the visual studio install.\n");
+    fprintf(stderr, "    windows_sdk_root_path        Path to the windows sdk. This should be the directory\n");
+    fprintf(stderr, "                                 in which you find 'bin', 'Include' and 'Lib'.\n");
+    fprintf(stderr, "    windows_sdk_version          The version of the windows sdk.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "host platform: %s\n", c_make_get_platform_name(c_make_get_host_platform()));
     fprintf(stderr, "host architecture: %s\n", c_make_get_architecture_name(c_make_get_host_architecture()));
