@@ -4198,6 +4198,7 @@ print_help(const char *program_name)
     fprintf(stderr, "    visual_studio_root_path      Path to the visual studio install. This should be the directory\n");
     fprintf(stderr, "                                 in which you find 'VC\\Tools\\MSVC\\<version>'.\n");
     fprintf(stderr, "    visual_studio_version        The version of the visual studio install.\n");
+    fprintf(stderr, "    windows_rc_executable        Path to the windows resource compiler executable.\n");
     fprintf(stderr, "    windows_sdk_root_path        Path to the windows sdk. This should be the directory\n");
     fprintf(stderr, "                                 in which you find 'bin', 'Include' and 'Lib'.\n");
     fprintf(stderr, "    windows_sdk_version          The version of the windows sdk.\n");
@@ -4676,6 +4677,21 @@ int main(int argument_count, char **arguments)
                 c_make_memory_set_used(&_c_make_context.public_memory, public_used);
             }
         }
+
+#if C_MAKE_PLATFORM_WINDOWS
+        CMakeSoftwarePackage windows_sdk;
+
+        if (c_make_get_windows_sdk(&windows_sdk))
+        {
+#  if C_MAKE_ARCHITECTURE_AMD64
+            c_make_config_set("windows_rc_executable",
+                              c_make_c_string_path_concat(windows_sdk.root_path, "bin", windows_sdk.version, "x64", "rc.exe"));
+#  elif C_MAKE_ARCHITECTURE_AARCH64
+            c_make_config_set("windows_rc_executable",
+                              c_make_c_string_path_concat(windows_sdk.root_path, "bin", windows_sdk.version, "arm64", "rc.exe"));
+#  endif
+        }
+#endif
 
         _c_make_entry_(CMakeTargetSetup);
 
