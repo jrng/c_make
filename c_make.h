@@ -3555,7 +3555,16 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
             return false;
         }
 
-        write(dst_fd, copy_buffer, size_to_read);
+        ssize_t written_bytes = write(dst_fd, copy_buffer, size_to_read);
+
+        if ((written_bytes < 0) || ((size_t) written_bytes != size_to_read))
+        {
+            c_make_end_temporary_memory(temp_memory);
+            close(src_fd);
+            close(dst_fd);
+            return false;
+        }
+
         index += size_to_read;
     }
 
