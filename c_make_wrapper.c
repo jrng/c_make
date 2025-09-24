@@ -103,8 +103,8 @@ int main(int argument_count, char **arguments)
 
                                 compiler_flags = c_make_string_trim(compiler_flags);
 
-                                c_make_command_append_command_line(&command, c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags));
-                                c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags)));
+                                c_make_command_append_command_line(&command, c_make_string_to_c_string(compiler_flags));
+                                c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(compiler_flags)));
 
                                 had_compiler_flags = true;
                             }
@@ -125,8 +125,8 @@ int main(int argument_count, char **arguments)
 
                                 compiler_flags = c_make_string_trim(compiler_flags);
 
-                                c_make_command_append_command_line(&command, c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags));
-                                c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(&_c_make_context.public_memory, compiler_flags)));
+                                c_make_command_append_command_line(&command, c_make_string_to_c_string(compiler_flags));
+                                c_make_command_append(&command, c_make_c_string_concat("-DC_MAKE_COMPILER_FLAGS=", c_make_string_to_c_string(compiler_flags)));
 
                                 had_msvc_flags = true;
                             }
