@@ -72,27 +72,74 @@ C_MAKE_ENTRY()
 {
     switch (c_make_target)
     {
+        case TargetSetup:
+        {
+        } break;
+
+        case TargetBuild:
+        {
+            Command cmd = { 0 };
+
+            const char *target_c_compiler = get_target_c_compiler();
+
+            command_append(&cmd, target_c_compiler);
+            command_append_command_line(&cmd, get_target_c_flags());
+            command_append_default_compiler_flags(&cmd, get_build_type());
+            command_append_output_executable(&cmd, c_string_path_concat(get_build_path(), "hello_world"),
+                                                   get_target_platform());
+            command_append(&cmd, c_string_path_concat(get_source_path(), "hello_world.c"));
+            command_append_default_linker_flags(&cmd, get_target_architecture());
+
+            c_make_log(LogLevel, "compile 'hello_world'\n");
+            command_run(cmd);
+        } break;
+
+        case TargetInstall:
+        {
+            copy_file(c_string_path_concat(get_build_path(), "hello_world"),
+                      c_string_path_concat(get_install_prefix(), "bin", "hello_world"));
+        } break;
+    }
+}
+```
+
+By default c_make lets you use all its functions and types without a prefix, which can be
+a problem when combining with other code that uses the same names.
+If you find that the symbol names of c_make collide with your own functions and type names
+you can choose to remove the stripped versions of all symbols by defining `C_MAKE_NO_STRIP_PREFIX`.
+Alternatively you can just undefine the symbols that collide right after including `c_make.h`
+(e.g. `#undef get_target_platform`).
+
+```c
+#define C_MAKE_IMPLEMENTATION
+#define C_MAKE_NO_STRIP_PREFIX
+#include "c_make.h" // this depends on where you put the header file
+
+C_MAKE_ENTRY()
+{
+    switch (c_make_target)
+    {
         case CMakeTargetSetup:
         {
         } break;
 
         case CMakeTargetBuild:
         {
-            CMakeCommand command = { 0 };
+            CMakeCommand cmd = { 0 };
 
             const char *target_c_compiler = c_make_get_target_c_compiler();
 
-            c_make_command_append(&command, target_c_compiler);
-            c_make_command_append_command_line(&command, c_make_get_target_c_flags());
-            c_make_command_append_default_compiler_flags(&command, c_make_get_build_type());
-            c_make_command_append_output_executable(&command,
+            c_make_command_append(&cmd, target_c_compiler);
+            c_make_command_append_command_line(&cmd, c_make_get_target_c_flags());
+            c_make_command_append_default_compiler_flags(&cmd, c_make_get_build_type());
+            c_make_command_append_output_executable(&cmd,
                                                     c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"),
                                                     c_make_get_target_platform());
-            c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
-            c_make_command_append_default_linker_flags(&command, c_make_get_target_architecture());
+            c_make_command_append(&cmd, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
+            c_make_command_append_default_linker_flags(&cmd, c_make_get_target_architecture());
 
             c_make_log(CMakeLogLevel, "compile 'hello_world'\n");
-            c_make_command_run(command);
+            c_make_command_run(cmd);
         } break;
 
         case CMakeTargetInstall:

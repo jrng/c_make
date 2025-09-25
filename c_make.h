@@ -4767,6 +4767,177 @@ int main(int argument_count, char **arguments)
 
 #endif // defined(C_MAKE_IMPLEMENTATION)
 
+#ifndef __C_MAKE_STRIP_PREFIX__
+#define __C_MAKE_STRIP_PREFIX__
+
+#  if !defined(C_MAKE_NO_STRIP_PREFIX)
+
+#    define PLATFORM_ANDROID C_MAKE_PLATFORM_ANDROID
+#    define PLATFORM_FREEBSD C_MAKE_PLATFORM_FREEBSD
+#    define PLATFORM_WINDOWS C_MAKE_PLATFORM_WINDOWS
+#    define PLATFORM_LINUX C_MAKE_PLATFORM_LINUX
+#    define PLATFORM_MACOS C_MAKE_PLATFORM_MACOS
+#    define PLATFORM_WEB C_MAKE_PLATFORM_WEB
+#    define ARCHITECTURE_AMD64 C_MAKE_ARCHITECTURE_AMD64
+#    define ARCHITECTURE_AARCH64 C_MAKE_ARCHITECTURE_AARCH64
+#    define ARCHITECTURE_RISCV64 C_MAKE_ARCHITECTURE_RISCV64
+#    define ARCHITECTURE_WASM32 C_MAKE_ARCHITECTURE_WASM32
+#    define ARCHITECTURE_WASM64 C_MAKE_ARCHITECTURE_WASM64
+#    define Str CMakeStr
+#    define ArrayCount CMakeArrayCount
+#    define String CMakeString
+#    define StringFmt CMakeStringFmt
+#    define StringArg CMakeStringArg
+#    define Command CMakeCommand
+#    define ConfigValue CMakeConfigValue
+#    define SoftwarePackage CMakeSoftwarePackage
+#    define AndroidSdk CMakeAndroidSdk
+#    define StringLiteral CMakeStringLiteral
+#    define CString CMakeCString
+#    define string_replace_all c_make_string_replace_all
+#    define string_to_c_string c_make_string_to_c_string
+#    define string_concat c_make_string_concat
+#    define c_string_concat c_make_c_string_concat
+#    define c_string_path_concat c_make_c_string_path_concat
+#    define c_string_concat_with_memory c_make_c_string_concat_with_memory
+#    define c_string_path_concat_with_memory c_make_c_string_path_concat_with_memory
+#    define command_append c_make_command_append
+#    define ProcessId CMakeProcessId
+#    define InvalidProcessId CMakeInvalidProcessId
+#    define Target CMakeTarget
+#    define TargetSetup CMakeTargetSetup
+#    define TargetBuild CMakeTargetBuild
+#    define TargetInstall CMakeTargetInstall
+#    define LogLevel CMakeLogLevel
+#    define LogLevelRaw CMakeLogLevelRaw
+#    define LogLevelInfo CMakeLogLevelInfo
+#    define LogLevelWarning CMakeLogLevelWarning
+#    define LogLevelError CMakeLogLevelError
+#    define Platform CMakePlatform
+#    define PlatformAndroid CMakePlatformAndroid
+#    define PlatformFreeBsd CMakePlatformFreeBsd
+#    define PlatformWindows CMakePlatformWindows
+#    define PlatformLinux CMakePlatformLinux
+#    define PlatformMacOs CMakePlatformMacOs
+#    define PlatformWeb CMakePlatformWeb
+#    define Architecture CMakeArchitecture
+#    define ArchitectureUnknown CMakeArchitectureUnknown
+#    define ArchitectureAmd64 CMakeArchitectureAmd64
+#    define ArchitectureAarch64 CMakeArchitectureAarch64
+#    define ArchitectureRiscv64 CMakeArchitectureRiscv64
+#    define ArchitectureWasm32 CMakeArchitectureWasm32
+#    define ArchitectureWasm64 CMakeArchitectureWasm64
+#    define BuildType CMakeBuildType
+#    define BuildTypeDebug CMakeBuildTypeDebug
+#    define BuildTypeRelDebug CMakeBuildTypeRelDebug
+#    define BuildTypeRelease CMakeBuildTypeRelease
+#    define set_failed c_make_set_failed
+#    define get_failed c_make_get_failed
+#    define memory_allocate c_make_memory_allocate
+#    define memory_reallocate c_make_memory_reallocate
+#    define memory_get_used c_make_memory_get_used
+#    define memory_set_used c_make_memory_set_used
+#    define allocate c_make_allocate
+#    define memory_save c_make_memory_save
+#    define memory_restore c_make_memory_restore
+#    define begin_temporary_memory c_make_begin_temporary_memory
+#    define end_temporary_memory c_make_end_temporary_memory
+#    define command_append_va c_make_command_append_va
+#    define command_append_slice c_make_command_append_slice
+#    define command_append_command_line c_make_command_append_command_line
+#    define command_append_output_object c_make_command_append_output_object
+#    define command_append_output_executable c_make_command_append_output_executable
+#    define command_append_input_static_library c_make_command_append_input_static_library
+#    define command_append_default_compiler_flags c_make_command_append_default_compiler_flags
+#    define command_append_default_linker_flags c_make_command_append_default_linker_flags
+#    define command_to_string c_make_command_to_string
+#    define strings_are_equal c_make_strings_are_equal
+#    define string_starts_with c_make_string_starts_with
+#    define copy_string c_make_copy_string
+#    define string_split_left c_make_string_split_left
+#    define string_split_right c_make_string_split_right
+#    define string_split_right_path_separator c_make_string_split_right_path_separator
+#    define string_trim c_make_string_trim
+#    define string_find c_make_string_find
+#    define string_replace_all_with_memory c_make_string_replace_all_with_memory
+#    define string_to_c_string_with_memory c_make_string_to_c_string_with_memory
+#    define parse_integer c_make_parse_integer
+#    define get_c_string_length c_make_get_c_string_length
+#    define get_host_platform c_make_get_host_platform
+#    define get_host_architecture c_make_get_host_architecture
+#    define get_platform_name c_make_get_platform_name
+#    define get_architecture_name c_make_get_architecture_name
+#    define get_target_platform c_make_get_target_platform
+#    define get_target_architecture c_make_get_target_architecture
+#    define get_build_type c_make_get_build_type
+#    define get_build_path c_make_get_build_path
+#    define get_source_path c_make_get_source_path
+#    define get_install_prefix c_make_get_install_prefix
+#    define get_host_ar c_make_get_host_ar
+#    define get_target_ar c_make_get_target_ar
+#    define get_host_c_compiler c_make_get_host_c_compiler
+#    define get_target_c_compiler c_make_get_target_c_compiler
+#    define get_target_c_flags c_make_get_target_c_flags
+#    define get_host_cpp_compiler c_make_get_host_cpp_compiler
+#    define get_target_cpp_compiler c_make_get_target_cpp_compiler
+#    define get_target_cpp_flags c_make_get_target_cpp_flags
+#    define find_best_software_package c_make_find_best_software_package
+#    define find_visual_studio c_make_find_visual_studio
+#    define find_windows_sdk c_make_find_windows_sdk
+#    define get_visual_studio c_make_get_visual_studio
+#    define get_windows_sdk c_make_get_windows_sdk
+#    define get_msvc_library_manager c_make_get_msvc_library_manager
+#    define get_msvc_compiler c_make_get_msvc_compiler
+#    define command_append_msvc_compiler_flags c_make_command_append_msvc_compiler_flags
+#    define command_append_msvc_linker_flags c_make_command_append_msvc_linker_flags
+#    define find_android_ndk c_make_find_android_ndk
+#    define find_android_sdk c_make_find_android_sdk
+#    define get_android_aapt c_make_get_android_aapt
+#    define get_android_platform_jar c_make_get_android_platform_jar
+#    define get_android_zipalign c_make_get_android_zipalign
+#    define setup_android c_make_setup_android
+#    define get_java_jar c_make_get_java_jar
+#    define get_java_jarsigner c_make_get_java_jarsigner
+#    define get_java_javac c_make_get_java_javac
+#    define get_java_keytool c_make_get_java_keytool
+#    define setup_java c_make_setup_java
+#    define config_set c_make_config_set
+#    define config_get c_make_config_get
+#    define store_config c_make_store_config
+#    define load_config c_make_load_config
+#    define needs_rebuild c_make_needs_rebuild
+#    define needs_rebuild_single_source c_make_needs_rebuild_single_source
+#    define directory_open c_make_directory_open
+#    define directory_get_next_entry c_make_directory_get_next_entry
+#    define directory_close c_make_directory_close
+#    define file_exists c_make_file_exists
+#    define directory_exists c_make_directory_exists
+#    define create_directory c_make_create_directory
+#    define create_directory_recursively c_make_create_directory_recursively
+#    define read_entire_file c_make_read_entire_file
+#    define write_entire_file c_make_write_entire_file
+#    define copy_file c_make_copy_file
+#    define rename_file c_make_rename_file
+#    define delete_file c_make_delete_file
+#    define has_slash_or_backslash c_make_has_slash_or_backslash
+#    define get_environment_variable c_make_get_environment_variable
+#    define find_program c_make_find_program
+#    define get_executable c_make_get_executable
+#    define command_run c_make_command_run
+#    define command_run_and_reset c_make_command_run_and_reset
+#    define process_wait c_make_process_wait
+#    define command_run_and_reset_and_wait c_make_command_run_and_reset_and_wait
+#    define command_run_and_wait c_make_command_run_and_wait
+#    define process_wait_for_all c_make_process_wait_for_all
+#    define is_msvc_library_manager c_make_is_msvc_library_manager
+#    define compiler_is_msvc c_make_compiler_is_msvc
+#    define config_set_if_not_exists c_make_config_set_if_not_exists
+#    define config_is_enabled c_make_config_is_enabled
+
+#  endif
+
+#endif // __C_MAKE_STRIP_PREFIX__
+
 /*
 MIT License
 
