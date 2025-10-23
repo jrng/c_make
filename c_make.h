@@ -2837,6 +2837,10 @@ c_make_config_set(const char *_key, const char *value)
         {
             _c_make_context.target_platform = CMakePlatformWeb;
         }
+        else
+        {
+            c_make_log(CMakeLogLevelWarning, "unknown target_platform '%" CMakeStringFmt "'\n", CMakeStringArg(entry->value));
+        }
     }
     else if (c_make_strings_are_equal(entry->key, CMakeStringLiteral("target_architecture")))
     {
@@ -2862,6 +2866,7 @@ c_make_config_set(const char *_key, const char *value)
         }
         else
         {
+            c_make_log(CMakeLogLevelWarning, "unknown target_architecture '%" CMakeStringFmt "'\n", CMakeStringArg(entry->value));
             _c_make_context.target_architecture = CMakeArchitectureUnknown;
         }
     }
@@ -2878,6 +2883,10 @@ c_make_config_set(const char *_key, const char *value)
         else if (c_make_strings_are_equal(entry->value, CMakeStringLiteral("release")))
         {
             _c_make_context.build_type = CMakeBuildTypeRelease;
+        }
+        else
+        {
+            c_make_log(CMakeLogLevelWarning, "unknown build_type '%" CMakeStringFmt "'; valid values are 'debug', 'reldebug' or 'release'\n", CMakeStringArg(entry->value));
         }
     }
 }
