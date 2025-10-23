@@ -770,6 +770,76 @@ c_make_string_utf16_to_utf8(CMakeMemory *memory, const wchar_t *utf16_string_dat
 
 #endif
 
+static inline CMakeString
+c_make_path_concat(CMakeMemory *memory, size_t count, CMakeString *items)
+{
+    CMakeString result = { 0, 0 };
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(1, &memory);
+
+    CMakeString *strings = (CMakeString *) c_make_memory_allocate(temp_memory.memory, count * sizeof(*strings));
+
+    for (size_t i = 0; i < count; i += 1)
+    {
+        CMakeString str = items[i];
+
+#if C_MAKE_PLATFORM_WINDOWS
+        if ((str.count > 0) && (str.data[str.count - 1] == '\\'))
+#else
+        if ((str.count > 0) && (str.data[str.count - 1] == '/'))
+#endif
+        {
+            str.count -= 1;
+        }
+
+        if (i > 0)
+        {
+#if C_MAKE_PLATFORM_WINDOWS
+            if ((str.count > 0) && (str.data[0] == '\\'))
+#else
+            if ((str.count > 0) && (str.data[0] == '/'))
+#endif
+            {
+                str.data += 1;
+                str.count -= 1;
+            }
+
+            result.count += str.count + 1;
+        }
+        else
+        {
+            result.count += str.count;
+        }
+
+        strings[i] = str;
+    }
+
+    result.data = (char *) c_make_memory_allocate(memory, result.count + 1);
+    char *dst = result.data;
+
+    for (size_t i = 0; i < count; i += 1)
+    {
+        CMakeString str = strings[i];
+
+        for (size_t j = 0; j < str.count; j += 1)
+        {
+            *dst++ = str.data[j];
+        }
+
+#if C_MAKE_PLATFORM_WINDOWS
+        *dst++ = '\\';
+#else
+        *dst++ = '/';
+#endif
+    }
+
+    result.data[result.count] = 0;
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return result;
+}
+
 C_MAKE_DEF void
 c_make_set_failed(bool failed)
 {
@@ -3836,7 +3906,9 @@ c_make_c_string_concat_va(CMakeMemory *memory, size_t count, ...)
 C_MAKE_DEF char *
 c_make_c_string_path_concat_va(CMakeMemory *memory, size_t count, ...)
 {
-    size_t length = 0;
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(1, &memory);
+
+    CMakeString *strings = (CMakeString *) c_make_memory_allocate(temp_memory.memory, count * sizeof(*strings));
 
     va_list args;
     va_start(args, count);
@@ -3844,33 +3916,16 @@ c_make_c_string_path_concat_va(CMakeMemory *memory, size_t count, ...)
     for (size_t i = 0; i < count; i += 1)
     {
         const char *str = va_arg(args, const char *);
-        length += c_make_get_c_string_length(str) + 1;
+        strings[i] = CMakeCString(str);
     }
 
     va_end(args);
 
-    char *result = (char *) c_make_memory_allocate(memory, length);
-    char *dst = result;
+    CMakeString result = c_make_path_concat(memory, count, strings);
 
-    va_start(args, count);
+    c_make_end_temporary_memory(temp_memory);
 
-    for (size_t i = 0; i < count; i += 1)
-    {
-        const char *str = va_arg(args, const char *);
-        while (*str) *dst++ = *str++;
-
-#if C_MAKE_PLATFORM_WINDOWS
-        *dst++ = '\\';
-#else
-        *dst++ = '/';
-#endif
-    }
-
-    va_end(args);
-
-    *--dst = 0;
-
-    return result;
+    return result.data;
 }
 
 static size_t
