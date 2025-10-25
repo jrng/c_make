@@ -561,7 +561,7 @@ c_make_is_msvc_library_manager(const char *cmd)
     if (cmd)
     {
         CMakeString cmd_path = CMakeCString(cmd);
-        CMakeString cmd_name = c_make_string_split_right(&cmd_path, '\\');
+        CMakeString cmd_name = c_make_string_split_right_path_separator(&cmd_path);
 
         return c_make_strings_are_equal(cmd_name, CMakeStringLiteral("lib.exe"));
     }
@@ -575,7 +575,7 @@ c_make_compiler_is_msvc(const char *compiler)
     if (compiler)
     {
         CMakeString compiler_path = CMakeCString(compiler);
-        CMakeString compiler_name = c_make_string_split_right(&compiler_path, '\\');
+        CMakeString compiler_name = c_make_string_split_right_path_separator(&compiler_path);
 
         return c_make_strings_are_equal(compiler_name, CMakeStringLiteral("cl.exe"));
     }
@@ -783,22 +783,14 @@ c_make_path_concat(CMakeMemory *memory, size_t count, CMakeString *items)
     {
         CMakeString str = items[i];
 
-#if C_MAKE_PLATFORM_WINDOWS
-        if ((str.count > 0) && (str.data[str.count - 1] == '\\'))
-#else
-        if ((str.count > 0) && (str.data[str.count - 1] == '/'))
-#endif
+        if ((str.count > 0) && ((str.data[str.count - 1] == '\\') || (str.data[str.count - 1] == '/')))
         {
             str.count -= 1;
         }
 
         if (i > 0)
         {
-#if C_MAKE_PLATFORM_WINDOWS
-            if ((str.count > 0) && (str.data[0] == '\\'))
-#else
-            if ((str.count > 0) && (str.data[0] == '/'))
-#endif
+            if ((str.count > 0) && ((str.data[0] == '\\') || (str.data[0] == '/')))
             {
                 str.data += 1;
                 str.count -= 1;
