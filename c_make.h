@@ -99,7 +99,10 @@
 #define c_make_string_replace_all(str, pattern, replace) c_make_string_replace_all_with_memory(&_c_make_context.public_memory, str, pattern, replace)
 #define c_make_string_to_c_string(str) c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, str)
 
-#define c_make_string_concat(...) c_make_string_concat_va(CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_string_concat(...) c_make_string_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_string_path_concat(...) c_make_string_path_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_string_concat_with_memory(memory, ...) c_make_string_concat_va(memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
+#define c_make_string_path_concat_with_memory(memory, ...) c_make_string_path_concat_va(memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 
 #define c_make_c_string_concat(...) c_make_c_string_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 #define c_make_c_string_path_concat(...) c_make_c_string_path_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
@@ -543,7 +546,8 @@ C_MAKE_DEF CMakeString c_make_get_environment_variable(CMakeMemory *memory, cons
 C_MAKE_DEF const char *c_make_find_program(const char *program_name);
 C_MAKE_DEF const char *c_make_get_executable(const char *config_name, const char *fallback_executable);
 
-C_MAKE_DEF CMakeString c_make_string_concat_va(size_t count, ...);
+C_MAKE_DEF CMakeString c_make_string_concat_va(CMakeMemory *memory, size_t count, ...);
+C_MAKE_DEF CMakeString c_make_string_path_concat_va(CMakeMemory *memory, size_t count, ...);
 
 C_MAKE_DEF char *c_make_c_string_concat_va(CMakeMemory *memory, size_t count, ...);
 C_MAKE_DEF char *c_make_c_string_path_concat_va(CMakeMemory *memory, size_t count, ...);
@@ -1239,26 +1243,19 @@ c_make_command_append_input_static_library(CMakeCommand *command, const char *in
 {
     if ((command->count > 0) && command->items[0])
     {
-        CMakeString path_str = CMakeCString(input_path);
-        CMakeString name_str = c_make_string_split_right_path_separator(&path_str);
-
-        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
-
-        const char *path = c_make_string_to_c_string_with_memory(temp_memory.memory, path_str);
-        const char *name = c_make_string_to_c_string_with_memory(temp_memory.memory, name_str);
+        CMakeString path = CMakeCString(input_path);
+        CMakeString name = c_make_string_split_right_path_separator(&path);
 
         const char *full_path;
 
         if (platform == CMakePlatformWindows)
         {
-            full_path = c_make_c_string_path_concat(path, c_make_c_string_concat(name, ".lib"));
+            full_path = c_make_string_path_concat(path, c_make_string_concat(name, CMakeStringLiteral(".lib"))).data;
         }
         else
         {
-            full_path = c_make_c_string_path_concat(path, c_make_c_string_concat("lib", name, ".a"));
+            full_path = c_make_string_path_concat(path, c_make_string_concat(CMakeStringLiteral("lib"), name, CMakeStringLiteral(".a"))).data;
         }
-
-        c_make_end_temporary_memory(temp_memory);
 
         c_make_command_append(command, full_path);
     }
@@ -2988,7 +2985,7 @@ c_make_print_config(void)
 C_MAKE_DEF bool
 c_make_store_config(const char *file_name)
 {
-    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
     CMakeString config_string = CMakeStringLiteral("");
 
@@ -2996,9 +2993,9 @@ c_make_store_config(const char *file_name)
     {
         CMakeConfigEntry *entry = _c_make_context.config.items + i;
 
-        config_string = c_make_string_concat(config_string, entry->key,
-                                             CMakeStringLiteral(" = \""),
-                                             entry->value, CMakeStringLiteral("\"\n"));
+        config_string = c_make_string_concat_with_memory(temp_memory.memory, config_string,
+                                                         entry->key, CMakeStringLiteral(" = \""),
+                                                         entry->value, CMakeStringLiteral("\"\n"));
     }
 
     bool result = c_make_write_entire_file(file_name, config_string);
@@ -3008,7 +3005,7 @@ c_make_store_config(const char *file_name)
         c_make_log(CMakeLogLevelError, "could not write config file '%s'\n", file_name);
     }
 
-    c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+    c_make_end_temporary_memory(temp_memory);
 
     return result;
 }
@@ -3826,7 +3823,7 @@ c_make_get_executable(const char *config_name, const char *fallback_executable)
 }
 
 C_MAKE_DEF CMakeString
-c_make_string_concat_va(size_t count, ...)
+c_make_string_concat_va(CMakeMemory *memory, size_t count, ...)
 {
     CMakeString result = { 0, 0 };
 
@@ -3841,7 +3838,7 @@ c_make_string_concat_va(size_t count, ...)
 
     va_end(args);
 
-    result.data = (char *) c_make_memory_allocate(&_c_make_context.public_memory, result.count);
+    result.data = (char *) c_make_memory_allocate(memory, result.count + 1);
     char *dst = result.data;
 
     va_start(args, count);
@@ -3857,6 +3854,32 @@ c_make_string_concat_va(size_t count, ...)
     }
 
     va_end(args);
+
+    result.data[result.count] = 0;
+
+    return result;
+}
+
+C_MAKE_DEF CMakeString
+c_make_string_path_concat_va(CMakeMemory *memory, size_t count, ...)
+{
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(1, &memory);
+
+    CMakeString *strings = (CMakeString *) c_make_memory_allocate(temp_memory.memory, count * sizeof(*strings));
+
+    va_list args;
+    va_start(args, count);
+
+    for (size_t i = 0; i < count; i += 1)
+    {
+        strings[i] = va_arg(args, CMakeString);
+    }
+
+    va_end(args);
+
+    CMakeString result = c_make_path_concat(memory, count, strings);
+
+    c_make_end_temporary_memory(temp_memory);
 
     return result;
 }
@@ -4853,6 +4876,9 @@ int main(int argument_count, char **arguments)
 #    define string_replace_all c_make_string_replace_all
 #    define string_to_c_string c_make_string_to_c_string
 #    define string_concat c_make_string_concat
+#    define string_path_concat c_make_string_path_concat
+#    define string_concat_with_memory c_make_string_concat_with_memory
+#    define string_path_concat_with_memory c_make_string_path_concat_with_memory
 #    define c_string_concat c_make_c_string_concat
 #    define c_string_path_concat c_make_c_string_path_concat
 #    define c_string_concat_with_memory c_make_c_string_concat_with_memory
