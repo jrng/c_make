@@ -162,7 +162,7 @@ typedef enum CMakeTarget
 
 #if !defined(C_MAKE_NO_ENTRY_POINT)
 
-#  define C_MAKE_ENTRY() void _c_make_entry_(CMakeTarget c_make_target)
+#  define C_MAKE_ENTRY(__target_name__) void _c_make_entry_(CMakeTarget __target_name__)
 
 C_MAKE_ENTRY();
 

@@ -2,9 +2,9 @@
 #define C_MAKE_IMPLEMENTATION
 #include "c_make.h"
 
-C_MAKE_ENTRY()
+C_MAKE_ENTRY(target)
 {
-    switch (c_make_target)
+    switch (target)
     {
         case TargetSetup:
         {
