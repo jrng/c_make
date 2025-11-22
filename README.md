@@ -68,9 +68,9 @@ a `hello_world.c` file looks like this:
 #define C_MAKE_IMPLEMENTATION
 #include "c_make.h" // this depends on where you put the header file
 
-C_MAKE_ENTRY()
+C_MAKE_ENTRY(target)
 {
-    switch (c_make_target)
+    switch (target)
     {
         case TargetSetup:
         {
@@ -115,9 +115,9 @@ Alternatively you can just undefine the symbols that collide right after includi
 #define C_MAKE_NO_STRIP_PREFIX
 #include "c_make.h" // this depends on where you put the header file
 
-C_MAKE_ENTRY()
+C_MAKE_ENTRY(target)
 {
-    switch (c_make_target)
+    switch (target)
     {
         case CMakeTargetSetup:
         {
