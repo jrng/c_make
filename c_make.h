@@ -457,6 +457,7 @@ C_MAKE_DEF void c_make_command_append_slice(CMakeCommand *command, size_t count,
 C_MAKE_DEF void c_make_command_append_command_line(CMakeCommand *command, const char *str);
 C_MAKE_DEF void c_make_command_append_output_object(CMakeCommand *command, const char *output_path, CMakePlatform platform);
 C_MAKE_DEF void c_make_command_append_output_executable(CMakeCommand *command, const char *output_path, CMakePlatform platform);
+C_MAKE_DEF void c_make_command_append_output_shared_library(CMakeCommand *command, const char *output_path, CMakePlatform platform);
 C_MAKE_DEF void c_make_command_append_input_static_library(CMakeCommand *command, const char *input_path, CMakePlatform platform);
 C_MAKE_DEF void c_make_command_append_default_compiler_flags(CMakeCommand *command, CMakeBuildType build_type);
 C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command, CMakeArchitecture architecture);
@@ -1227,6 +1228,47 @@ c_make_command_append_output_executable(CMakeCommand *command, const char *outpu
             if (platform == CMakePlatformWindows)
             {
                 arguments[1] = c_make_c_string_concat(output_path, ".exe");
+            }
+        }
+
+        c_make_command_append_slice(command, CMakeArrayCount(arguments), arguments);
+    }
+    else
+    {
+        c_make_log(CMakeLogLevelWarning, "%s: you need to append a c/c++ compiler command as the first argument\n", __func__);
+    }
+}
+
+C_MAKE_DEF void
+c_make_command_append_output_shared_library(CMakeCommand *command, const char *output_path, CMakePlatform platform)
+{
+    if ((command->count > 0) && command->items[0])
+    {
+        const char *compiler = command->items[0];
+
+        const char *arguments[2];
+
+        if (c_make_compiler_is_msvc(compiler))
+        {
+            arguments[0] = c_make_c_string_concat("-Fe", output_path, ".dll");
+            arguments[1] = c_make_c_string_concat("-Fo", output_path, ".obj");
+        }
+        else
+        {
+            arguments[0] = "-o";
+
+            if (platform == CMakePlatformWindows)
+            {
+                arguments[1] = c_make_c_string_concat(output_path, ".dll");
+            }
+            else
+            {
+                CMakeString path = CMakeCString(output_path);
+                CMakeString filename = c_make_string_split_right_path_separator(&path);
+
+                CMakeString full_path = c_make_string_path_concat(path, c_make_string_concat(CMakeStringLiteral("lib"), filename, CMakeStringLiteral(".so")));
+
+                arguments[1] = full_path.data;
             }
         }
 
@@ -4929,6 +4971,7 @@ int main(int argument_count, char **arguments)
 #    define command_append_command_line c_make_command_append_command_line
 #    define command_append_output_object c_make_command_append_output_object
 #    define command_append_output_executable c_make_command_append_output_executable
+#    define command_append_output_shared_library c_make_command_append_output_shared_library
 #    define command_append_input_static_library c_make_command_append_input_static_library
 #    define command_append_default_compiler_flags c_make_command_append_default_compiler_flags
 #    define command_append_default_linker_flags c_make_command_append_default_linker_flags
