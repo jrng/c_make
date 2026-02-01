@@ -3618,7 +3618,7 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
 
     if (src_fd < 0)
     {
-        c_make_log(CMakeLogLevelError, "could not open file '%s': %s\n", src_file_name, strerror(errno));
+        c_make_log(CMakeLogLevelError, "[copy_file] could not open file '%s': %s\n", src_file_name, strerror(errno));
         return false;
     }
 
@@ -3626,7 +3626,7 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
 
     if (fstat(src_fd, &stats) < 0)
     {
-        c_make_log(CMakeLogLevelError, "could not get file stats on '%s': %s\n", src_file_name, strerror(errno));
+        c_make_log(CMakeLogLevelError, "[copy_file] could not get file stats on '%s': %s\n", src_file_name, strerror(errno));
         close(src_fd);
         return false;
     }
@@ -3637,7 +3637,7 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
 
     if (dst_fd < 0)
     {
-        c_make_log(CMakeLogLevelError, "could not create file '%s': %s\n", dst_file_name, strerror(errno));
+        c_make_log(CMakeLogLevelError, "[copy_file] could not create file '%s': %s\n", dst_file_name, strerror(errno));
         close(src_fd);
         return false;
     }
