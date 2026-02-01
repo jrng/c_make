@@ -110,6 +110,7 @@
 #define c_make_c_string_path_concat_with_memory(memory, ...) c_make_c_string_path_concat_va(memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 
 #define c_make_command_append(command, ...) c_make_command_append_va(command, CMakeNArgs(__VA_ARGS__), __VA_ARGS__ )
+#define c_make_command_run_output(command, stdout_str, stderr_str) c_make_command_run_output_with_memory(&_c_make_context.public_memory, command, stdout_str, stderr_str)
 
 #if defined(C_MAKE_STATIC)
 #  define C_MAKE_DEF static
@@ -558,6 +559,7 @@ C_MAKE_DEF CMakeProcessId c_make_command_run_and_reset(CMakeCommand *command);
 C_MAKE_DEF bool c_make_process_wait(CMakeProcessId process_id);
 C_MAKE_DEF bool c_make_command_run_and_reset_and_wait(CMakeCommand *command);
 C_MAKE_DEF bool c_make_command_run_and_wait(CMakeCommand command);
+C_MAKE_DEF bool c_make_command_run_output_with_memory(CMakeMemory *memory, CMakeCommand command, CMakeString *stdout_str, CMakeString *stderr_str);
 C_MAKE_DEF bool c_make_process_wait_for_all(void);
 
 static inline bool
@@ -4086,8 +4088,8 @@ __c_make_process_wait(CMakeProcessId process_id)
     return index;
 }
 
-C_MAKE_DEF CMakeProcessId
-c_make_command_run(CMakeCommand command)
+static CMakeProcessId
+__c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *stdout_str, CMakeString *stderr_str)
 {
     if (command.count == 0)
     {
@@ -4122,7 +4124,10 @@ c_make_command_run(CMakeCommand command)
     start_info.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
     start_info.dwFlags    = STARTF_USESTDHANDLES;
 
-    PROCESS_INFORMATION process_info = { 0 };
+    SECURITY_ATTRIBUTES security_attributes = { 0 };
+    security_attributes.nLength              = sizeof(security_attributes);
+    security_attributes.lpSecurityDescriptor = 0;
+    security_attributes.bInheritHandle       = TRUE;
 
     CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
@@ -4134,9 +4139,92 @@ c_make_command_run(CMakeCommand command)
     int wide_count = MultiByteToWideChar(CP_UTF8, 0, command_line.data, command_line.count, wide_command_line, wide_command_line_size);
     wide_command_line[wide_count] = 0;
 
+    HANDLE stdout_read, stdout_write, stderr_read, stderr_write;
+    bool read_stdout = false, read_stderr = false;
+    size_t stdout_allocated = 0, stderr_allocated = 0;
+
+    if (stdout_str)
+    {
+        if (!CreatePipe(&stdout_read, &stdout_write, &security_attributes, 0))
+        {
+            c_make_end_temporary_memory(temp_memory);
+            c_make_log(CMakeLogLevelError, "[command_run] could not create pipe for stdout\n");
+            return CMakeInvalidProcessId;
+        }
+
+        if (!SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0))
+        {
+            c_make_end_temporary_memory(temp_memory);
+            c_make_log(CMakeLogLevelError, "[command_run] could not create pipe for stdout\n");
+
+            CloseHandle(stdout_read);
+            CloseHandle(stdout_write);
+
+            return CMakeInvalidProcessId;
+        }
+
+        start_info.hStdOutput = stdout_write;
+
+        read_stdout = true;
+        stdout_str->count = 0;
+        stdout_str->data  = 0;
+    }
+
+    if (stderr_str)
+    {
+        if (!CreatePipe(&stderr_read, &stderr_write, &security_attributes, 0))
+        {
+            c_make_end_temporary_memory(temp_memory);
+            c_make_log(CMakeLogLevelError, "[command_run] could not create pipe for stderr\n");
+
+            if (stdout_str)
+            {
+                CloseHandle(stdout_read);
+                CloseHandle(stdout_write);
+            }
+
+            return CMakeInvalidProcessId;
+        }
+
+        if (!SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0))
+        {
+            c_make_end_temporary_memory(temp_memory);
+            c_make_log(CMakeLogLevelError, "[command_run] could not create pipe for stderr\n");
+
+            if (stdout_str)
+            {
+                CloseHandle(stdout_read);
+                CloseHandle(stdout_write);
+            }
+
+            CloseHandle(stderr_read);
+            CloseHandle(stderr_write);
+
+            return CMakeInvalidProcessId;
+        }
+
+        start_info.hStdError = stderr_write;
+
+        read_stderr = true;
+        stderr_str->count = 0;
+        stderr_str->data  = 0;
+    }
+
+    PROCESS_INFORMATION process_info = { 0 };
+
     BOOL result = CreateProcess(0, wide_command_line, 0, 0, TRUE, 0, 0, 0, &start_info, &process_info);
 
     c_make_end_temporary_memory(temp_memory);
+
+    if (stdout_str)
+    {
+        CloseHandle(stdout_write);
+    }
+
+    if (stderr_str)
+    {
+        CloseHandle(stderr_write);
+    }
 
     if (!result)
     {
@@ -4146,12 +4234,84 @@ c_make_command_run(CMakeCommand command)
         c_make_log(CMakeLogLevelError, "could not run command (GetLastError = %lu): %" CMakeStringFmt "\n", GetLastError(), CMakeStringArg(command_string));
 
         c_make_end_temporary_memory(temp_memory);
+
+        if (stdout_str)
+        {
+            CloseHandle(stdout_read);
+        }
+
+        if (stderr_str)
+        {
+            CloseHandle(stderr_read);
+        }
+
         return CMakeInvalidProcessId;
     }
 
     CloseHandle(process_info.hThread);
 
     process_id = process_info.hProcess;
+
+    while (read_stdout && read_stderr)
+    {
+        if (read_stdout)
+        {
+            if ((stdout_allocated - stdout_str->count) < 256)
+            {
+                stdout_str->data = c_make_memory_reallocate(memory, stdout_str->data, stdout_allocated, stdout_allocated + 256);
+                stdout_allocated += 256;
+                read_stdout = (stdout_str->data != 0);
+            }
+
+            if (read_stdout)
+            {
+                DWORD bytes_read = 0;
+
+                if (ReadFile(stdout_read, stdout_str->data + stdout_str->count, stdout_allocated - stdout_str->count, &bytes_read, 0))
+                {
+                    stdout_str->count += bytes_read;
+                }
+                else
+                {
+                    read_stdout = false;
+                }
+            }
+        }
+
+        if (read_stderr)
+        {
+            if ((stderr_allocated - stderr_str->count) < 256)
+            {
+                stderr_str->data = c_make_memory_reallocate(memory, stderr_str->data, stderr_allocated, stderr_allocated + 256);
+                stderr_allocated += 256;
+                read_stderr = (stderr_str->data != 0);
+            }
+
+            if (read_stderr)
+            {
+                DWORD bytes_read = 0;
+
+                if (ReadFile(stderr_read, stderr_str->data + stderr_str->count, stderr_allocated - stderr_str->count, &bytes_read, 0))
+                {
+                    stderr_str->count += bytes_read;
+                }
+                else
+                {
+                    read_stderr = false;
+                }
+            }
+        }
+    }
+
+    if (stdout_str)
+    {
+        CloseHandle(stdout_read);
+    }
+
+    if (stderr_str)
+    {
+        CloseHandle(stderr_read);
+    }
 #else
     CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
     char **command_line = (char **) c_make_memory_allocate(temp_memory.memory, (command.count + 1) * sizeof(char *));
@@ -4163,6 +4323,45 @@ c_make_command_run(CMakeCommand command)
 
     command_line[command.count] = 0;
 
+    int stdout_pipe[2], stderr_pipe[2];
+    bool read_stdout = false, read_stderr = false;
+    size_t stdout_allocated = 0, stderr_allocated = 0;
+
+    if (stdout_str)
+    {
+        if (pipe(stdout_pipe))
+        {
+            c_make_end_temporary_memory(temp_memory);
+            c_make_log(CMakeLogLevelError, "[command_run] could not create pipe for stdout: %s\n", strerror(errno));
+            return CMakeInvalidProcessId;
+        }
+
+        read_stdout = true;
+        stdout_str->count = 0;
+        stdout_str->data  = 0;
+    }
+
+    if (stderr_str)
+    {
+        if (pipe(stderr_pipe))
+        {
+            c_make_end_temporary_memory(temp_memory);
+            c_make_log(CMakeLogLevelError, "[command_run] could not create pipe for stderr: %s\n", strerror(errno));
+
+            if (stdout_str)
+            {
+                close(stdout_pipe[0]);
+                close(stdout_pipe[1]);
+            }
+
+            return CMakeInvalidProcessId;
+        }
+
+        read_stderr = true;
+        stderr_str->count = 0;
+        stderr_str->data  = 0;
+    }
+
     pid_t pid = fork();
 
     if (pid < 0)
@@ -4170,11 +4369,36 @@ c_make_command_run(CMakeCommand command)
         c_make_end_temporary_memory(temp_memory);
         // TODO: log error
         fprintf(stderr, "Could not fork\n");
+
+        if (stdout_str)
+        {
+            close(stdout_pipe[0]);
+            close(stdout_pipe[1]);
+        }
+
+        if (stderr_str)
+        {
+            close(stderr_pipe[0]);
+            close(stderr_pipe[1]);
+        }
+
         return CMakeInvalidProcessId;
     }
 
     if (pid == 0)
     {
+        if (read_stdout)
+        {
+            close(stdout_pipe[0]);
+            dup2(stdout_pipe[1], STDOUT_FILENO);
+        }
+
+        if (read_stderr)
+        {
+            close(stderr_pipe[0]);
+            dup2(stderr_pipe[1], STDERR_FILENO);
+        }
+
         int ret = execvp(command_line[0], command_line);
 
         if (ret < 0)
@@ -4191,6 +4415,79 @@ c_make_command_run(CMakeCommand command)
     c_make_end_temporary_memory(temp_memory);
 
     process_id = pid;
+
+    if (stdout_str)
+    {
+        close(stdout_pipe[1]);
+    }
+
+    if (stderr_str)
+    {
+        close(stderr_pipe[1]);
+    }
+
+    while (read_stdout && read_stderr)
+    {
+        if (read_stdout)
+        {
+            if ((stdout_allocated - stdout_str->count) < 256)
+            {
+                stdout_str->data = c_make_memory_reallocate(memory, stdout_str->data, stdout_allocated, stdout_allocated + 256);
+                stdout_allocated += 256;
+                read_stdout = (stdout_str->data != 0);
+            }
+
+            if (read_stdout)
+            {
+                size_t ret = read(stdout_pipe[0], stdout_str->data + stdout_str->count,
+                                  stdout_allocated - stdout_str->count);
+
+                if (ret > 0)
+                {
+                    stdout_str->count += ret;
+                }
+                else
+                {
+                    read_stdout = false;
+                }
+            }
+        }
+
+        if (read_stderr)
+        {
+            if ((stderr_allocated - stderr_str->count) < 256)
+            {
+                stderr_str->data = c_make_memory_reallocate(memory, stderr_str->data, stderr_allocated, stderr_allocated + 256);
+                stderr_allocated += 256;
+                read_stderr = (stderr_str->data != 0);
+            }
+
+            if (read_stderr)
+            {
+                size_t ret = read(stderr_pipe[0], stderr_str->data + stderr_str->count,
+                                  stderr_allocated - stderr_str->count);
+
+                if (ret > 0)
+                {
+                    stderr_str->count += ret;
+                }
+                else
+                {
+                    read_stderr = false;
+                }
+            }
+        }
+    }
+
+    if (stdout_str)
+    {
+        close(stdout_pipe[0]);
+    }
+
+    if (stderr_str)
+    {
+        close(stderr_pipe[0]);
+    }
 #endif
 
     if (_c_make_context.process_group.count == _c_make_context.process_group.allocated)
@@ -4211,7 +4508,7 @@ c_make_command_run(CMakeCommand command)
     process->exited = false;
     process->succeeded = true;
 
-    if (_c_make_context.sequential)
+    if (_c_make_context.sequential || stdout_str || stderr_str)
     {
         __c_make_process_wait(process_id);
     }
@@ -4220,9 +4517,15 @@ c_make_command_run(CMakeCommand command)
 }
 
 C_MAKE_DEF CMakeProcessId
+c_make_command_run(CMakeCommand command)
+{
+    return __c_make_command_run(0, command, 0, 0);
+}
+
+C_MAKE_DEF CMakeProcessId
 c_make_command_run_and_reset(CMakeCommand *command)
 {
-    CMakeProcessId process_id = c_make_command_run(*command);
+    CMakeProcessId process_id = __c_make_command_run(0, *command, 0, 0);
     command->count = 0;
     return process_id;
 }
@@ -4251,7 +4554,7 @@ c_make_process_wait(CMakeProcessId process_id)
 C_MAKE_DEF bool
 c_make_command_run_and_reset_and_wait(CMakeCommand *command)
 {
-    CMakeProcessId process_id = c_make_command_run(*command);
+    CMakeProcessId process_id = __c_make_command_run(0, *command, 0, 0);
     command->count = 0;
     return c_make_process_wait(process_id);
 }
@@ -4259,7 +4562,14 @@ c_make_command_run_and_reset_and_wait(CMakeCommand *command)
 C_MAKE_DEF bool
 c_make_command_run_and_wait(CMakeCommand command)
 {
-    CMakeProcessId process_id = c_make_command_run(command);
+    CMakeProcessId process_id = __c_make_command_run(0, command, 0, 0);
+    return c_make_process_wait(process_id);
+}
+
+C_MAKE_DEF bool
+c_make_command_run_output_with_memory(CMakeMemory *memory, CMakeCommand command, CMakeString *stdout_str, CMakeString *stderr_str)
+{
+    CMakeProcessId process_id = __c_make_command_run(memory, command, stdout_str, stderr_str);
     return c_make_process_wait(process_id);
 }
 
@@ -4926,6 +5236,7 @@ int main(int argument_count, char **arguments)
 #    define c_string_concat_with_memory c_make_c_string_concat_with_memory
 #    define c_string_path_concat_with_memory c_make_c_string_path_concat_with_memory
 #    define command_append c_make_command_append
+#    define command_run_output c_make_command_run_output
 #    define ProcessId CMakeProcessId
 #    define InvalidProcessId CMakeInvalidProcessId
 #    define Target CMakeTarget
@@ -5053,6 +5364,7 @@ int main(int argument_count, char **arguments)
 #    define process_wait c_make_process_wait
 #    define command_run_and_reset_and_wait c_make_command_run_and_reset_and_wait
 #    define command_run_and_wait c_make_command_run_and_wait
+#    define command_run_output_with_memory c_make_command_run_output_with_memory
 #    define process_wait_for_all c_make_process_wait_for_all
 #    define is_msvc_library_manager c_make_is_msvc_library_manager
 #    define compiler_is_msvc c_make_compiler_is_msvc
