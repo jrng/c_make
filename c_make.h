@@ -4252,13 +4252,13 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
 
     process_id = process_info.hProcess;
 
-    while (read_stdout && read_stderr)
+    while (read_stdout || read_stderr)
     {
         if (read_stdout)
         {
             if ((stdout_allocated - stdout_str->count) < 256)
             {
-                stdout_str->data = c_make_memory_reallocate(memory, stdout_str->data, stdout_allocated, stdout_allocated + 256);
+                stdout_str->data = (char *) c_make_memory_reallocate(memory, stdout_str->data, stdout_allocated, stdout_allocated + 256);
                 stdout_allocated += 256;
                 read_stdout = (stdout_str->data != 0);
             }
@@ -4282,7 +4282,7 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
         {
             if ((stderr_allocated - stderr_str->count) < 256)
             {
-                stderr_str->data = c_make_memory_reallocate(memory, stderr_str->data, stderr_allocated, stderr_allocated + 256);
+                stderr_str->data = (char *) c_make_memory_reallocate(memory, stderr_str->data, stderr_allocated, stderr_allocated + 256);
                 stderr_allocated += 256;
                 read_stderr = (stderr_str->data != 0);
             }
@@ -4426,13 +4426,13 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
         close(stderr_pipe[1]);
     }
 
-    while (read_stdout && read_stderr)
+    while (read_stdout || read_stderr)
     {
         if (read_stdout)
         {
             if ((stdout_allocated - stdout_str->count) < 256)
             {
-                stdout_str->data = c_make_memory_reallocate(memory, stdout_str->data, stdout_allocated, stdout_allocated + 256);
+                stdout_str->data = (char *) c_make_memory_reallocate(memory, stdout_str->data, stdout_allocated, stdout_allocated + 256);
                 stdout_allocated += 256;
                 read_stdout = (stdout_str->data != 0);
             }
@@ -4457,7 +4457,7 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
         {
             if ((stderr_allocated - stderr_str->count) < 256)
             {
-                stderr_str->data = c_make_memory_reallocate(memory, stderr_str->data, stderr_allocated, stderr_allocated + 256);
+                stderr_str->data = (char *) c_make_memory_reallocate(memory, stderr_str->data, stderr_allocated, stderr_allocated + 256);
                 stderr_allocated += 256;
                 read_stderr = (stderr_str->data != 0);
             }
