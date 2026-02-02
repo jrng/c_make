@@ -493,6 +493,9 @@ C_MAKE_DEF const char *c_make_get_host_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_cpp_flags(void);
 
+C_MAKE_DEF const char *c_make_get_pkg_config(void);
+C_MAKE_DEF bool c_make_pkg_config_find_package(const char *name);
+
 C_MAKE_DEF bool c_make_find_best_software_package(const char *directory, CMakeString prefix, CMakeSoftwarePackage *software_package);
 
 C_MAKE_DEF bool c_make_find_visual_studio(CMakeSoftwarePackage *visual_studio_install);
@@ -2031,6 +2034,73 @@ c_make_get_target_cpp_flags(void)
     {
         result = value.val;
     }
+
+    return result;
+}
+
+C_MAKE_DEF const char *
+c_make_get_pkg_config(void)
+{
+#if C_MAKE_PLATFORM_LINUX
+    return c_make_get_executable("pkg_config_executable", "pkg-config");
+#else
+    return 0;
+#endif
+}
+
+C_MAKE_DEF bool
+c_make_pkg_config_find_package(const char *name)
+{
+    if (!name)
+    {
+        return false;
+    }
+
+    const char *pkg_config = c_make_get_pkg_config();
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    const char *key_found = c_make_c_string_concat_with_memory(temp_memory.memory, name, "_found");
+    const char *key_compiler_flags = c_make_c_string_concat_with_memory(temp_memory.memory, name, "_compiler_flags");
+    const char *key_linker_flags = c_make_c_string_concat_with_memory(temp_memory.memory, name, "_linker_flags");
+
+    bool result = false;
+
+    if (pkg_config && !c_make_config_is_enabled(key_found, false))
+    {
+        CMakeString pkg_config_stdout;
+
+        CMakeCommand command = { 0 };
+        c_make_command_append(&command, pkg_config, "--cflags", name);
+
+        if (c_make_command_run_output(command, &pkg_config_stdout, 0))
+        {
+            CMakeString compiler_flags = c_make_string_trim(c_make_string_split_left(&pkg_config_stdout, '\n'));
+            c_make_config_set(key_compiler_flags, c_make_string_to_c_string_with_memory(temp_memory.memory, compiler_flags));
+            result = true;
+        }
+
+        command.count = 0;
+        c_make_command_append(&command, pkg_config, "--libs", name);
+
+        if (c_make_command_run_output(command, &pkg_config_stdout, 0))
+        {
+            CMakeString linker_flags = c_make_string_trim(c_make_string_split_left(&pkg_config_stdout, '\n'));
+            c_make_config_set(key_linker_flags, c_make_string_to_c_string_with_memory(temp_memory.memory, linker_flags));
+            result = true;
+        }
+
+        if (result)
+        {
+            c_make_config_set(key_found, "on");
+        }
+    }
+
+    c_make_config_set_if_not_exists(key_found, "off");
+    c_make_config_set_if_not_exists(key_compiler_flags, "");
+    c_make_config_set_if_not_exists(key_linker_flags, "");
+
+    c_make_end_temporary_memory(temp_memory);
 
     return result;
 }
@@ -4625,6 +4695,7 @@ print_help(const char *program_name)
     fprintf(stderr, "    java_jarsigner_executable    Path to the java jarsigner executable.\n");
     fprintf(stderr, "    java_javac_executable        Path to the java compiler (javac).\n");
     fprintf(stderr, "    java_keytool_executable      Path to the java keytool executable.\n");
+    fprintf(stderr, "    pkg_config_executable        Path to the pkg-config executable.\n");
     fprintf(stderr, "    target_architecture          Architecture of the target. Either 'amd64', 'aarch64',\n");
     fprintf(stderr, "                                 'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
     fprintf(stderr, "                                 host architecture.\n");
@@ -4987,6 +5058,15 @@ int main(int argument_count, char **arguments)
             c_make_memory_set_used(&_c_make_context.public_memory, public_used);
         }
 
+#if C_MAKE_PLATFORM_LINUX
+        const char *pkg_config_executable = c_make_find_program("pkg-config");
+
+        if (pkg_config_executable)
+        {
+            c_make_config_set("pkg_config_executable", pkg_config_executable);
+        }
+#endif
+
         CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
         size_t memory_used = c_make_memory_get_used(temp_memory.memory);
 
@@ -5317,6 +5397,8 @@ int main(int argument_count, char **arguments)
 #    define get_host_cpp_compiler c_make_get_host_cpp_compiler
 #    define get_target_cpp_compiler c_make_get_target_cpp_compiler
 #    define get_target_cpp_flags c_make_get_target_cpp_flags
+#    define get_pkg_config c_make_get_pkg_config
+#    define pkg_config_find_package c_make_pkg_config_find_package
 #    define find_best_software_package c_make_find_best_software_package
 #    define find_visual_studio c_make_find_visual_studio
 #    define find_windows_sdk c_make_find_windows_sdk
