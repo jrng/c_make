@@ -2070,10 +2070,12 @@ c_make_pkg_config_find_package(const char *name)
     {
         CMakeString pkg_config_stdout;
 
+        bool did_fail = _c_make_context.did_fail;
+
         CMakeCommand command = { 0 };
         c_make_command_append(&command, pkg_config, "--cflags", name);
 
-        if (c_make_command_run_output(command, &pkg_config_stdout, 0))
+        if (c_make_command_run_output_with_memory(temp_memory.memory, command, &pkg_config_stdout, 0))
         {
             CMakeString compiler_flags = c_make_string_trim(c_make_string_split_left(&pkg_config_stdout, '\n'));
             c_make_config_set(key_compiler_flags, c_make_string_to_c_string_with_memory(temp_memory.memory, compiler_flags));
@@ -2083,12 +2085,14 @@ c_make_pkg_config_find_package(const char *name)
         command.count = 0;
         c_make_command_append(&command, pkg_config, "--libs", name);
 
-        if (c_make_command_run_output(command, &pkg_config_stdout, 0))
+        if (c_make_command_run_output_with_memory(temp_memory.memory, command, &pkg_config_stdout, 0))
         {
             CMakeString linker_flags = c_make_string_trim(c_make_string_split_left(&pkg_config_stdout, '\n'));
             c_make_config_set(key_linker_flags, c_make_string_to_c_string_with_memory(temp_memory.memory, linker_flags));
             result = true;
         }
+
+        _c_make_context.did_fail = did_fail;
 
         if (result)
         {
@@ -4062,7 +4066,6 @@ __c_make_process_wait(CMakeProcessId process_id)
 {
     if (process_id == CMakeInvalidProcessId)
     {
-        _c_make_context.did_fail = true;
         return -1;
     }
 
@@ -4090,7 +4093,6 @@ __c_make_process_wait(CMakeProcessId process_id)
 
             if (wait_result == WAIT_FAILED)
             {
-                _c_make_context.did_fail = true;
                 process->succeeded = false;
                 // TODO: log error
             }
@@ -4100,14 +4102,12 @@ __c_make_process_wait(CMakeProcessId process_id)
 
                 if (!GetExitCodeProcess(process_id, &exit_code))
                 {
-                    _c_make_context.did_fail = true;
                     process->succeeded = false;
                     // TODO: log error
                 }
 
                 if (exit_code != 0)
                 {
-                    _c_make_context.did_fail = true;
                     process->succeeded = false;
                     // TODO: log that the process has exited with an error code
                     // TODO: What to return here? false or true?
@@ -4122,7 +4122,6 @@ __c_make_process_wait(CMakeProcessId process_id)
 
                 if (waitpid(process_id, &status, 0) < 0)
                 {
-                    _c_make_context.did_fail = true;
                     process->succeeded = false;
                     // TODO: log error
                     break;
@@ -4134,7 +4133,6 @@ __c_make_process_wait(CMakeProcessId process_id)
 
                     if (exit_code != 0)
                     {
-                        _c_make_context.did_fail = true;
                         process->succeeded = false;
                         // TODO: log that the process has exited with an error code
                         // TODO: What to return here? false or true?
@@ -4145,7 +4143,6 @@ __c_make_process_wait(CMakeProcessId process_id)
 
                 if (WIFSIGNALED(status))
                 {
-                    _c_make_context.did_fail = true;
                     process->succeeded = false;
                     // TODO: log the signal that terminated the child
                     break;
@@ -4611,11 +4608,16 @@ c_make_process_wait(CMakeProcessId process_id)
 
         assert(process->exited);
         bool succeeded = process->succeeded;
+        _c_make_context.did_fail = !succeeded;
 
         _c_make_context.process_group.count -= 1;
         _c_make_context.process_group.items[index] = _c_make_context.process_group.items[_c_make_context.process_group.count];
 
         return succeeded;
+    }
+    else if (index == (size_t) -1)
+    {
+        _c_make_context.did_fail = true;
     }
 
     return false;
