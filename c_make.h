@@ -511,6 +511,7 @@ C_MAKE_DEF bool c_make_find_android_ndk(CMakeSoftwarePackage *android_ndk, bool 
 C_MAKE_DEF bool c_make_find_android_sdk(CMakeAndroidSdk *android_sdk, bool logging);
 
 C_MAKE_DEF const char *c_make_get_android_aapt(void);
+C_MAKE_DEF const char *c_make_get_android_d8(void);
 C_MAKE_DEF const char *c_make_get_android_platform_jar(void);
 C_MAKE_DEF const char *c_make_get_android_zipalign(void);
 
@@ -2709,6 +2710,16 @@ c_make_get_android_aapt(void)
 }
 
 C_MAKE_DEF const char *
+c_make_get_android_d8(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("android_d8_executable", "d8.exe");
+#else
+    return c_make_get_executable("android_d8_executable", "d8");
+#endif
+}
+
+C_MAKE_DEF const char *
 c_make_get_android_platform_jar(void)
 {
     const char *result = 0;
@@ -2752,17 +2763,22 @@ c_make_setup_android(bool logging)
 
 #if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
     const char *android_aapt_executable_name     = "aapt.exe";
+    const char *android_d8_executable_name       = "d8.exe";
     const char *android_zipalign_executable_name = "zipalign.exe";
 #else
     const char *android_aapt_executable_name     = "aapt";
+    const char *android_d8_executable_name       = "d8";
     const char *android_zipalign_executable_name = "zipalign";
 #endif
 
     const char *android_aapt_executable     = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_aapt_executable_name);
+    // 'd8' got introduced with build-tools >= 28.0.1
+    const char *android_d8_executable       = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_d8_executable_name);
     const char *android_platform_jar        = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.platforms.root_path, "android.jar");
     const char *android_zipalign_executable = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_zipalign_executable_name);
 
     c_make_config_set("android_aapt_executable", android_aapt_executable);
+    c_make_config_set("android_d8_executable", android_d8_executable);
     c_make_config_set("android_platform_jar", android_platform_jar);
     c_make_config_set("android_zipalign_executable", android_zipalign_executable);
 
@@ -4685,6 +4701,7 @@ print_help(const char *program_name)
     fprintf(stderr, "meaning to c_make:\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "    android_aapt_executable      Path to the android aapt executable.\n");
+    fprintf(stderr, "    android_d8_executable        Path to the android d8 executable.\n");
     fprintf(stderr, "    android_platform_jar         Path to the android platforms 'android.jar'.\n");
     fprintf(stderr, "    android_zipalign_executable  Path to the android zipalign executable.\n");
     fprintf(stderr, "    build_type                   Build type. Either 'debug', 'reldebug' or 'release'.\n");
@@ -5413,6 +5430,7 @@ int main(int argument_count, char **arguments)
 #    define find_android_ndk c_make_find_android_ndk
 #    define find_android_sdk c_make_find_android_sdk
 #    define get_android_aapt c_make_get_android_aapt
+#    define get_android_d8 c_make_get_android_d8
 #    define get_android_platform_jar c_make_get_android_platform_jar
 #    define get_android_zipalign c_make_get_android_zipalign
 #    define setup_android c_make_setup_android
