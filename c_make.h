@@ -266,14 +266,23 @@ typedef struct CMakeProcess
     bool succeeded;
 } CMakeProcess;
 
+typedef enum CMakeFileType
+{
+    CMakeFileTypeDirectory = 0,
+    CMakeFileTypeRegular   = 1,
+    CMakeFileTypeOther     = 2,
+} CMakeFileType;
+
 typedef struct CMakeDirectoryEntry
 {
+    CMakeFileType type;
     CMakeString name;
 } CMakeDirectoryEntry;
 
 typedef struct CMakeDirectory
 {
     CMakeDirectoryEntry entry;
+    const char *path;
 
 #if C_MAKE_PLATFORM_WINDOWS
     bool first_read;
@@ -538,6 +547,7 @@ C_MAKE_DEF CMakeDirectory *c_make_directory_open(CMakeMemory *memory, const char
 C_MAKE_DEF CMakeDirectoryEntry *c_make_directory_get_next_entry(CMakeMemory *memory, CMakeDirectory *directory);
 C_MAKE_DEF void c_make_directory_close(CMakeDirectory *directory);
 
+C_MAKE_DEF CMakeFileType c_make_get_file_type(const char *file_name);
 C_MAKE_DEF bool c_make_file_exists(const char *file_name);
 C_MAKE_DEF bool c_make_directory_exists(const char *directory_name);
 C_MAKE_DEF bool c_make_create_directory(const char *directory_name);
@@ -3326,6 +3336,7 @@ c_make_directory_open(CMakeMemory *memory, const char *directory_name)
     if (handle != INVALID_HANDLE_VALUE)
     {
         directory = (CMakeDirectory *) c_make_memory_allocate(memory, sizeof(*directory));
+        directory->path = directory_name;
         directory->first_read = true;
         directory->handle = handle;
         directory->find_data = find_data;
@@ -3336,6 +3347,7 @@ c_make_directory_open(CMakeMemory *memory, const char *directory_name)
     if (dir)
     {
         directory = (CMakeDirectory *) c_make_memory_allocate(memory, sizeof(*directory));
+        directory->path = directory_name;
         directory->handle = dir;
     }
 #endif
@@ -3365,6 +3377,10 @@ c_make_directory_get_next_entry(CMakeMemory *memory, CMakeDirectory *directory)
 
     result = &directory->entry;
     result->name = CMakeCString(entry_name);
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+    result->type = c_make_get_file_type(c_make_c_string_path_concat_with_memory(temp_memory.memory, directory->path, entry_name));
+    c_make_end_temporary_memory(temp_memory);
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     struct dirent *entry = readdir(directory->handle);
 
@@ -3372,6 +3388,10 @@ c_make_directory_get_next_entry(CMakeMemory *memory, CMakeDirectory *directory)
     {
         result = &directory->entry;
         result->name = c_make_copy_string(memory, CMakeCString(entry->d_name));
+
+        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+        result->type = c_make_get_file_type(c_make_c_string_path_concat_with_memory(temp_memory.memory, directory->path, entry->d_name));
+        c_make_end_temporary_memory(temp_memory);
     }
 #endif
 
@@ -3386,6 +3406,49 @@ c_make_directory_close(CMakeDirectory *directory)
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     closedir(directory->handle);
 #endif
+}
+
+C_MAKE_DEF CMakeFileType
+c_make_get_file_type(const char *file_name)
+{
+    CMakeFileType result = CMakeFileTypeOther;
+
+#if C_MAKE_PLATFORM_WINDOWS
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    LPWSTR utf16_file_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, file_name);
+    DWORD file_attributes = GetFileAttributes(utf16_file_name);
+
+    c_make_end_temporary_memory(temp_memory);
+
+    if (file_attributes != INVALID_FILE_ATTRIBUTES)
+    {
+        if (file_attributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            result = CMakeFileTypeDirectory;
+        }
+        else
+        {
+            result = CMakeFileTypeRegular;
+        }
+    }
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    struct stat stats;
+
+    if (!stat(file_name, &stats))
+    {
+        if (S_ISREG(stats.st_mode))
+        {
+            result = CMakeFileTypeRegular;
+        }
+        else if (S_ISDIR(stats.st_mode))
+        {
+            result = CMakeFileTypeDirectory;
+        }
+    }
+#endif
+
+    return result;
 }
 
 C_MAKE_DEF bool
@@ -5332,6 +5395,12 @@ int main(int argument_count, char **arguments)
 #    define StringArg CMakeStringArg
 #    define Command CMakeCommand
 #    define ConfigValue CMakeConfigValue
+#    define FileType CMakeFileType
+#    define FileTypeDirectory CMakeFileTypeDirectory
+#    define FileTypeRegular CMakeFileTypeRegular
+#    define FileTypeOther CMakeFileTypeOther
+#    define DirectoryEntry CMakeDirectoryEntry
+#    define Directory CMakeDirectory
 #    define SoftwarePackage CMakeSoftwarePackage
 #    define AndroidSdk CMakeAndroidSdk
 #    define StringLiteral CMakeStringLiteral
@@ -5463,6 +5532,7 @@ int main(int argument_count, char **arguments)
 #    define directory_open c_make_directory_open
 #    define directory_get_next_entry c_make_directory_get_next_entry
 #    define directory_close c_make_directory_close
+#    define get_file_type c_make_get_file_type
 #    define file_exists c_make_file_exists
 #    define directory_exists c_make_directory_exists
 #    define create_directory c_make_create_directory
