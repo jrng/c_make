@@ -5365,6 +5365,8 @@ int main(int argument_count, char **arguments)
 #    define BuildTypeDebug CMakeBuildTypeDebug
 #    define BuildTypeRelDebug CMakeBuildTypeRelDebug
 #    define BuildTypeRelease CMakeBuildTypeRelease
+#    define Memory CMakeMemory
+#    define TemporaryMemory CMakeTemporaryMemory
 #    define set_failed c_make_set_failed
 #    define get_failed c_make_get_failed
 #    define memory_allocate c_make_memory_allocate
