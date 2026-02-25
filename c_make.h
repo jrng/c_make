@@ -2068,6 +2068,7 @@ c_make_get_pkg_config(void)
 #if C_MAKE_PLATFORM_LINUX
     return c_make_get_executable("pkg_config_executable", "pkg-config");
 #else
+    c_make_log(CMakeLogLevelWarning, "[get_pkg_config] pkg-config is not a thing on this platform\n");
     return 0;
 #endif
 }
@@ -4042,6 +4043,11 @@ c_make_get_executable(const char *config_name, const char *fallback_executable)
     else
     {
         result = c_make_find_program(fallback_executable);
+    }
+
+    if (!result)
+    {
+        c_make_log(CMakeLogLevelWarning, "[get_executable] could not find executable '%s'\n", fallback_executable);
     }
 
     return result;
