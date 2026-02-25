@@ -521,6 +521,7 @@ C_MAKE_DEF bool c_make_find_android_ndk(CMakeSoftwarePackage *android_ndk, bool 
 C_MAKE_DEF bool c_make_find_android_sdk(CMakeAndroidSdk *android_sdk, bool logging);
 
 C_MAKE_DEF const char *c_make_get_android_aapt(void);
+C_MAKE_DEF const char *c_make_get_android_apksigner(void);
 C_MAKE_DEF const char *c_make_get_android_d8(void);
 C_MAKE_DEF const char *c_make_get_android_platform_jar(void);
 C_MAKE_DEF const char *c_make_get_android_zipalign(void);
@@ -2732,6 +2733,16 @@ c_make_get_android_aapt(void)
 }
 
 C_MAKE_DEF const char *
+c_make_get_android_apksigner(void)
+{
+#if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
+    return c_make_get_executable("android_apksigner_executable", "apksigner.exe");
+#else
+    return c_make_get_executable("android_apksigner_executable", "apksigner");
+#endif
+}
+
+C_MAKE_DEF const char *
 c_make_get_android_d8(void)
 {
 #if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
@@ -2784,22 +2795,27 @@ c_make_setup_android(bool logging)
     CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
 #if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
-    const char *android_aapt_executable_name     = "aapt.exe";
-    const char *android_d8_executable_name       = "d8.exe";
-    const char *android_zipalign_executable_name = "zipalign.exe";
+    const char *android_aapt_executable_name      = "aapt.exe";
+    const char *android_apksigner_executable_name = "apksigner.exe";
+    const char *android_d8_executable_name        = "d8.exe";
+    const char *android_zipalign_executable_name  = "zipalign.exe";
 #else
-    const char *android_aapt_executable_name     = "aapt";
-    const char *android_d8_executable_name       = "d8";
-    const char *android_zipalign_executable_name = "zipalign";
+    const char *android_aapt_executable_name      = "aapt";
+    const char *android_apksigner_executable_name = "apksigner";
+    const char *android_d8_executable_name        = "d8";
+    const char *android_zipalign_executable_name  = "zipalign";
 #endif
 
-    const char *android_aapt_executable     = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_aapt_executable_name);
+    const char *android_aapt_executable      = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_aapt_executable_name);
+    // 'apksigner' got introduced with build-tools >= 24.0.3
+    const char *android_apksigner_executable = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_apksigner_executable_name);
     // 'd8' got introduced with build-tools >= 28.0.1
-    const char *android_d8_executable       = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_d8_executable_name);
-    const char *android_platform_jar        = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.platforms.root_path, "android.jar");
-    const char *android_zipalign_executable = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_zipalign_executable_name);
+    const char *android_d8_executable        = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_d8_executable_name);
+    const char *android_platform_jar         = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.platforms.root_path, "android.jar");
+    const char *android_zipalign_executable  = c_make_c_string_path_concat_with_memory(temp_memory.memory, android_sdk.build_tools.root_path, android_zipalign_executable_name);
 
     c_make_config_set("android_aapt_executable", android_aapt_executable);
+    c_make_config_set("android_apksigner_executable", android_apksigner_executable);
     c_make_config_set("android_d8_executable", android_d8_executable);
     c_make_config_set("android_platform_jar", android_platform_jar);
     c_make_config_set("android_zipalign_executable", android_zipalign_executable);
@@ -4775,39 +4791,40 @@ print_help(const char *program_name)
     fprintf(stderr, "want can be stored in there, but there are some options that have special\n");
     fprintf(stderr, "meaning to c_make:\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "    android_aapt_executable      Path to the android aapt executable.\n");
-    fprintf(stderr, "    android_d8_executable        Path to the android d8 executable.\n");
-    fprintf(stderr, "    android_platform_jar         Path to the android platforms 'android.jar'.\n");
-    fprintf(stderr, "    android_zipalign_executable  Path to the android zipalign executable.\n");
-    fprintf(stderr, "    build_type                   Build type. Either 'debug', 'reldebug' or 'release'.\n");
-    fprintf(stderr, "                                 Default: 'debug'\n");
-    fprintf(stderr, "    host_ar                      Path to or name of the host archive/library program.\n");
-    fprintf(stderr, "    host_c_compiler              Path to or name of the host c compiler.\n");
-    fprintf(stderr, "    host_cpp_compiler            Path to or name of the host c++ compiler.\n");
-    fprintf(stderr, "    install_prefix               Install prefix. Defaults to '/usr/local'.\n");
-    fprintf(stderr, "    java_jar_executable          Path to the java jar executable.\n");
-    fprintf(stderr, "    java_jarsigner_executable    Path to the java jarsigner executable.\n");
-    fprintf(stderr, "    java_javac_executable        Path to the java compiler (javac).\n");
-    fprintf(stderr, "    java_keytool_executable      Path to the java keytool executable.\n");
-    fprintf(stderr, "    pkg_config_executable        Path to the pkg-config executable.\n");
-    fprintf(stderr, "    target_architecture          Architecture of the target. Either 'amd64', 'aarch64',\n");
-    fprintf(stderr, "                                 'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
-    fprintf(stderr, "                                 host architecture.\n");
-    fprintf(stderr, "    target_ar                    Path to or name of the target archive/library program.\n");
-    fprintf(stderr, "    target_c_compiler            Path to or name of the target c compiler.\n");
-    fprintf(stderr, "    target_c_flags               Flags for the target c build.\n");
-    fprintf(stderr, "    target_cpp_compiler          Path to or name of the target c++ compiler.\n");
-    fprintf(stderr, "    target_cpp_flags             Flags for the target c++ build.\n");
-    fprintf(stderr, "    target_platform              Platform of the target. Either 'android', 'freebsd',\n");
-    fprintf(stderr, "                                 'windows', 'linux', 'macos' or 'web'. The default is\n");
-    fprintf(stderr, "                                 the host platform.\n");
-    fprintf(stderr, "    visual_studio_root_path      Path to the visual studio install. This should be the directory\n");
-    fprintf(stderr, "                                 in which you find 'VC\\Tools\\MSVC\\<version>'.\n");
-    fprintf(stderr, "    visual_studio_version        The version of the visual studio install.\n");
-    fprintf(stderr, "    windows_rc_executable        Path to the windows resource compiler executable.\n");
-    fprintf(stderr, "    windows_sdk_root_path        Path to the windows sdk. This should be the directory\n");
-    fprintf(stderr, "                                 in which you find 'bin', 'Include' and 'Lib'.\n");
-    fprintf(stderr, "    windows_sdk_version          The version of the windows sdk.\n");
+    fprintf(stderr, "    android_aapt_executable       Path to the android aapt executable.\n");
+    fprintf(stderr, "    android_apksigner_executable  Path to the android apksigner executable.\n");
+    fprintf(stderr, "    android_d8_executable         Path to the android d8 executable.\n");
+    fprintf(stderr, "    android_platform_jar          Path to the android platforms 'android.jar'.\n");
+    fprintf(stderr, "    android_zipalign_executable   Path to the android zipalign executable.\n");
+    fprintf(stderr, "    build_type                    Build type. Either 'debug', 'reldebug' or 'release'.\n");
+    fprintf(stderr, "                                  Default: 'debug'\n");
+    fprintf(stderr, "    host_ar                       Path to or name of the host archive/library program.\n");
+    fprintf(stderr, "    host_c_compiler               Path to or name of the host c compiler.\n");
+    fprintf(stderr, "    host_cpp_compiler             Path to or name of the host c++ compiler.\n");
+    fprintf(stderr, "    install_prefix                Install prefix. Defaults to '/usr/local'.\n");
+    fprintf(stderr, "    java_jar_executable           Path to the java jar executable.\n");
+    fprintf(stderr, "    java_jarsigner_executable     Path to the java jarsigner executable.\n");
+    fprintf(stderr, "    java_javac_executable         Path to the java compiler (javac).\n");
+    fprintf(stderr, "    java_keytool_executable       Path to the java keytool executable.\n");
+    fprintf(stderr, "    pkg_config_executable         Path to the pkg-config executable.\n");
+    fprintf(stderr, "    target_architecture           Architecture of the target. Either 'amd64', 'aarch64',\n");
+    fprintf(stderr, "                                  'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
+    fprintf(stderr, "                                  host architecture.\n");
+    fprintf(stderr, "    target_ar                     Path to or name of the target archive/library program.\n");
+    fprintf(stderr, "    target_c_compiler             Path to or name of the target c compiler.\n");
+    fprintf(stderr, "    target_c_flags                Flags for the target c build.\n");
+    fprintf(stderr, "    target_cpp_compiler           Path to or name of the target c++ compiler.\n");
+    fprintf(stderr, "    target_cpp_flags              Flags for the target c++ build.\n");
+    fprintf(stderr, "    target_platform               Platform of the target. Either 'android', 'freebsd',\n");
+    fprintf(stderr, "                                  'windows', 'linux', 'macos' or 'web'. The default is\n");
+    fprintf(stderr, "                                  the host platform.\n");
+    fprintf(stderr, "    visual_studio_root_path       Path to the visual studio install. This should be the directory\n");
+    fprintf(stderr, "                                  in which you find 'VC\\Tools\\MSVC\\<version>'.\n");
+    fprintf(stderr, "    visual_studio_version         The version of the visual studio install.\n");
+    fprintf(stderr, "    windows_rc_executable         Path to the windows resource compiler executable.\n");
+    fprintf(stderr, "    windows_sdk_root_path         Path to the windows sdk. This should be the directory\n");
+    fprintf(stderr, "                                  in which you find 'bin', 'Include' and 'Lib'.\n");
+    fprintf(stderr, "    windows_sdk_version           The version of the windows sdk.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "host platform: %s\n", c_make_get_platform_name(c_make_get_host_platform()));
     fprintf(stderr, "host architecture: %s\n", c_make_get_architecture_name(c_make_get_host_architecture()));
@@ -5514,6 +5531,7 @@ int main(int argument_count, char **arguments)
 #    define find_android_ndk c_make_find_android_ndk
 #    define find_android_sdk c_make_find_android_sdk
 #    define get_android_aapt c_make_get_android_aapt
+#    define get_android_apksigner c_make_get_android_apksigner
 #    define get_android_d8 c_make_get_android_d8
 #    define get_android_platform_jar c_make_get_android_platform_jar
 #    define get_android_zipalign c_make_get_android_zipalign
