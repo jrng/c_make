@@ -4267,6 +4267,7 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
 {
     if (command.count == 0)
     {
+        c_make_log(CMakeLogLevelError, "[command_run] command is empty\n");
         return CMakeInvalidProcessId;
     }
 
@@ -4284,6 +4285,7 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
     {
         if (!command.items[i])
         {
+            c_make_log(CMakeLogLevelError, "[command_run] command has a NULL argument at index %zu\n", i);
             return CMakeInvalidProcessId;
         }
     }
