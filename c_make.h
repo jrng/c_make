@@ -1212,6 +1212,10 @@ c_make_command_append_output_object(CMakeCommand *command, const char *output_pa
             {
                 c_make_command_append(command, "-o", c_make_c_string_concat(output_path, ".obj"));
             }
+            else if (platform == CMakePlatformWeb)
+            {
+                c_make_command_append(command, "-o", c_make_c_string_concat(output_path, ".wasm"));
+            }
             else
             {
                 c_make_command_append(command, "-o", c_make_c_string_concat(output_path, ".o"));
@@ -1246,6 +1250,10 @@ c_make_command_append_output_executable(CMakeCommand *command, const char *outpu
             if (platform == CMakePlatformWindows)
             {
                 arguments[1] = c_make_c_string_concat(output_path, ".exe");
+            }
+            else if (platform == CMakePlatformWeb)
+            {
+                arguments[1] = c_make_c_string_concat(output_path, ".wasm");
             }
         }
 
