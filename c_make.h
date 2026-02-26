@@ -4291,7 +4291,12 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
     {
         if (!command.items[i])
         {
-            c_make_log(CMakeLogLevelError, "[command_run] command has a NULL argument at index %zu\n", i);
+            CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+            CMakeString command_string = c_make_command_to_string(temp_memory.memory, command);
+            c_make_log(CMakeLogLevelError, "[command_run] command has a NULL argument at index %zu: %" CMakeStringFmt "\n", i, CMakeStringArg(command_string));
+
+            c_make_end_temporary_memory(temp_memory);
             return CMakeInvalidProcessId;
         }
     }
@@ -4548,9 +4553,9 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
 
     if (pid < 0)
     {
+        CMakeString command_string = c_make_command_to_string(temp_memory.memory, command);
+        c_make_log(CMakeLogLevelError, "[command_run.fork] %s: %" CMakeStringFmt "\n", strerror(errno), CMakeStringArg(command_string));
         c_make_end_temporary_memory(temp_memory);
-        // TODO: log error
-        fprintf(stderr, "Could not fork\n");
 
         if (stdout_str)
         {
@@ -4585,8 +4590,8 @@ __c_make_command_run(CMakeMemory *memory, CMakeCommand command, CMakeString *std
 
         if (ret < 0)
         {
-            // TODO: log error
-            fprintf(stderr, "Could not execvp: %s\n", strerror(errno));
+            CMakeString command_string = c_make_command_to_string(temp_memory.memory, command);
+            c_make_log(CMakeLogLevelError, "[command_run.execvp] %s: %" CMakeStringFmt "\n", strerror(errno), CMakeStringArg(command_string));
             exit(1);
         }
 
