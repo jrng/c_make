@@ -93,6 +93,7 @@
 #define __CMakeNArgs(x) x
 #define _CMakeNArgs(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, n, ...) n
 
+#define CMakeStringConstant(str) { sizeof(str) - 1, (char *) (str) }
 #define CMakeStringLiteral(str) c_make_make_string((char *) (str), sizeof(str) - 1)
 #define CMakeCString(str) c_make_make_string((char *) (str), c_make_get_c_string_length(str))
 
@@ -4776,6 +4777,36 @@ c_make_process_wait_for_all(void)
 
 #if !defined(C_MAKE_NO_ENTRY_POINT)
 
+static const CMakeString known_config_keys[] = {
+    CMakeStringConstant("android_aapt_executable"),
+    CMakeStringConstant("android_apksigner_executable"),
+    CMakeStringConstant("android_d8_executable"),
+    CMakeStringConstant("android_platform_jar"),
+    CMakeStringConstant("android_zipalign_executable"),
+    CMakeStringConstant("build_type"),
+    CMakeStringConstant("host_ar"),
+    CMakeStringConstant("host_c_compiler"),
+    CMakeStringConstant("host_cpp_compiler"),
+    CMakeStringConstant("install_prefix"),
+    CMakeStringConstant("java_jar_executable"),
+    CMakeStringConstant("java_jarsigner_executable"),
+    CMakeStringConstant("java_javac_executable"),
+    CMakeStringConstant("java_keytool_executable"),
+    CMakeStringConstant("pkg_config_executable"),
+    CMakeStringConstant("target_architecture"),
+    CMakeStringConstant("target_ar"),
+    CMakeStringConstant("target_c_compiler"),
+    CMakeStringConstant("target_c_flags"),
+    CMakeStringConstant("target_cpp_compiler"),
+    CMakeStringConstant("target_cpp_flags"),
+    CMakeStringConstant("target_platform"),
+    CMakeStringConstant("visual_studio_root_path"),
+    CMakeStringConstant("visual_studio_version"),
+    CMakeStringConstant("windows_rc_executable"),
+    CMakeStringConstant("windows_sdk_root_path"),
+    CMakeStringConstant("windows_sdk_version"),
+};
+
 static void
 print_help(const char *program_name)
 {
@@ -4837,6 +4868,50 @@ print_help(const char *program_name)
     fprintf(stderr, "\n");
     fprintf(stderr, "host platform: %s\n", c_make_get_platform_name(c_make_get_host_platform()));
     fprintf(stderr, "host architecture: %s\n", c_make_get_architecture_name(c_make_get_host_architecture()));
+}
+
+static size_t
+__c_make_string_get_levenshtein_distance(CMakeString a, CMakeString b)
+{
+    size_t n = a.count + 1;
+    size_t m = b.count + 1;
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    size_t *d0 = (size_t *) c_make_memory_allocate(temp_memory.memory, 2 * n * sizeof(*d0));
+    size_t *d1 = d0 + n;
+
+    for (size_t j = 0; j < n; j += 1)
+    {
+        d0[j] = j;
+    }
+
+    for (size_t i = 1; i < m; i += 1)
+    {
+        d1[0] = i;
+
+        for (size_t j = 1; j < n; j += 1)
+        {
+            d1[j] = d0[j - 1];
+
+            if (a.data[j - 1] != b.data[i - 1])
+            {
+                if (d0[j]     < d1[j]) d1[j] = d0[j];
+                if (d1[j - 1] < d1[j]) d1[j] = d1[j - 1];
+                d1[j] += 1;
+            }
+        }
+
+        size_t *tmp = d1;
+        d1 = d0;
+        d0 = tmp;
+    }
+
+    size_t result = d0[a.count];
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return result;
 }
 
 int main(int argument_count, char **arguments)
@@ -5199,6 +5274,33 @@ int main(int argument_count, char **arguments)
 
             if (key.count && value.count)
             {
+                for (size_t i = 0; i < CMakeArrayCount(known_config_keys); i += 1)
+                {
+                    size_t distance;
+
+                    if (key.count < known_config_keys[i].count)
+                    {
+                        distance = known_config_keys[i].count - key.count;
+                    }
+                    else
+                    {
+                        distance = key.count - known_config_keys[i].count;
+                    }
+
+                    const size_t max_distance = 4;
+
+                    if (distance <= max_distance)
+                    {
+                        distance = __c_make_string_get_levenshtein_distance(key, known_config_keys[i]);
+
+                        if ((distance > 0) && (distance <= max_distance))
+                        {
+                            c_make_log(CMakeLogLevelWarning, "setting config key '%" CMakeStringFmt "'; did you mean '%" CMakeStringFmt "'\n",
+                                                             key, known_config_keys[i]);
+                        }
+                    }
+                }
+
                 if (value.data[0] == '"')
                 {
                     value.count -= 1;
