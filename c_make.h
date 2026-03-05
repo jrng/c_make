@@ -642,6 +642,12 @@ c_make_config_is_enabled(const char *key, bool fallback)
 }
 #endif
 
+#endif // __C_MAKE_INCLUDE__
+
+#if defined(C_MAKE_IMPLEMENTATION)
+
+static CMakeContext _c_make_context;
+
 #include <stdio.h>
 #include <assert.h>
 #include <stdarg.h>
@@ -652,25 +658,13 @@ c_make_config_is_enabled(const char *key, bool fallback)
 #  include <time.h>
 #  include <errno.h>
 #  include <fcntl.h>
+#  include <string.h>
 #  include <unistd.h>
 #  include <sys/stat.h>
 
 #endif
 
-#endif // __C_MAKE_INCLUDE__
-
-#if defined(C_MAKE_IMPLEMENTATION)
-
-static CMakeContext _c_make_context;
-
-#if !defined(c_make_strlen)
-#  include <string.h>
-#  define c_make_strcmp(a, b) strcmp(a, b)
-#  define c_make_strdup(a) strdup(a)
-#endif
-
 #if !defined(c_make_malloc)
-#  include <stdlib.h>
 #  define c_make_malloc(a) malloc(a)
 #endif
 
