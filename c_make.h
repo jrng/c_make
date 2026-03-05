@@ -623,9 +623,7 @@ c_make_config_is_enabled(const char *key, bool fallback)
 
     if (config_value.is_valid)
     {
-        const char *val = config_value.val;
-
-        if (val && (val[0] == 'o') && (val[1] == 'n') && (val[2] == 0))
+        if (c_make_strings_are_equal(CMakeCString(config_value.val), CMakeStringLiteral("on")))
         {
             result = true;
         }
