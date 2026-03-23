@@ -1,7 +1,14 @@
 # C Make
 
 **c_make** is a single header build system that let's you specify your build process
-as a c or c++ program.
+as a c or c++ program. The goal of this build system can be summarized by the following quote.
+
+> In the beginning you always want results.  
+> In the end all you want is control.  
+> &nbsp;&nbsp;&nbsp;&nbsp;- Eskil Steenberg
+
+The focus is on giving you the most control over your build process, especially in larger projects,
+and NOT to optimize for the shortest hello world example.
 
 ## Why use c as a build system?
 
