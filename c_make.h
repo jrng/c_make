@@ -155,20 +155,8 @@ extern "C" {
 #  include <stdbool.h>
 #endif
 
-typedef enum CMakeTarget
-{
-    CMakeTargetSetup   = 0,
-    CMakeTargetBuild   = 1,
-    CMakeTargetInstall = 2,
-} CMakeTarget;
-
-#if !defined(C_MAKE_NO_ENTRY_POINT)
-
-#  define C_MAKE_ENTRY(__target_name__) void _c_make_entry_(CMakeTarget __target_name__)
-
-C_MAKE_ENTRY(target);
-
-#endif // !defined(C_MAKE_NO_ENTRY_POINT)
+#define C_MAKE_COMMAND_SETUP CMakeStringLiteral("setup")
+#define C_MAKE_COMMAND_BUILD CMakeStringLiteral("build")
 
 typedef enum CMakeLogLevel
 {
@@ -354,6 +342,15 @@ typedef struct CMakeAndroidSdk
     CMakeSoftwarePackage platforms;
     CMakeSoftwarePackage build_tools;
 } CMakeAndroidSdk;
+
+#if !defined(C_MAKE_NO_ENTRY_POINT)
+
+#  define C_MAKE_ENTRY(__command_name__, __argument_count_name__, __arguments_name__) \
+        void _c_make_entry_(CMakeString __command_name__, size_t __argument_count_name__, CMakeString *__arguments_name__)
+
+C_MAKE_ENTRY(command, argument_count, arguments);
+
+#endif // !defined(C_MAKE_NO_ENTRY_POINT)
 
 static inline CMakeString
 c_make_make_string(void *data, size_t count)
@@ -5436,7 +5433,7 @@ int main(int argument_count, char **arguments)
         }
 #endif
 
-        _c_make_entry_(CMakeTargetSetup);
+        _c_make_entry_(command, 0, 0);
 
         c_make_process_wait_for_all();
 
@@ -5455,8 +5452,7 @@ int main(int argument_count, char **arguments)
 
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
     }
-    else if (c_make_strings_are_equal(command, CMakeStringLiteral("build")) ||
-             c_make_strings_are_equal(command, CMakeStringLiteral("install")))
+    else
     {
         if (!c_make_directory_exists(build_directory))
         {
@@ -5481,14 +5477,15 @@ int main(int argument_count, char **arguments)
             c_make_print_config();
         }
 
-        if (c_make_strings_are_equal(command, CMakeStringLiteral("build")))
+        size_t command_argument_count = argument_count - 3;
+        CMakeString *command_arguments = (CMakeString *) c_make_memory_allocate(&_c_make_context.permanent_memory, command_argument_count * sizeof(*command_arguments));
+
+        for (int i = 3; i < argument_count; i += 1)
         {
-            _c_make_entry_(CMakeTargetBuild);
+            command_arguments[i - 3] = CMakeCString(arguments[i]);
         }
-        else
-        {
-            _c_make_entry_(CMakeTargetInstall);
-        }
+
+        _c_make_entry_(command, command_argument_count, command_arguments);
 
         c_make_process_wait_for_all();
     }
@@ -5516,6 +5513,8 @@ int main(int argument_count, char **arguments)
 #    define ARCHITECTURE_RISCV64 C_MAKE_ARCHITECTURE_RISCV64
 #    define ARCHITECTURE_WASM32 C_MAKE_ARCHITECTURE_WASM32
 #    define ARCHITECTURE_WASM64 C_MAKE_ARCHITECTURE_WASM64
+#    define COMMAND_SETUP C_MAKE_COMMAND_SETUP
+#    define COMMAND_BUILD C_MAKE_COMMAND_BUILD
 #    define Str CMakeStr
 #    define ArrayCount CMakeArrayCount
 #    define String CMakeString
@@ -5547,10 +5546,6 @@ int main(int argument_count, char **arguments)
 #    define command_run_output c_make_command_run_output
 #    define ProcessId CMakeProcessId
 #    define InvalidProcessId CMakeInvalidProcessId
-#    define Target CMakeTarget
-#    define TargetSetup CMakeTargetSetup
-#    define TargetBuild CMakeTargetBuild
-#    define TargetInstall CMakeTargetInstall
 #    define LogLevel CMakeLogLevel
 #    define LogLevelRaw CMakeLogLevelRaw
 #    define LogLevelInfo CMakeLogLevelInfo
