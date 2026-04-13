@@ -87,22 +87,22 @@ int main(int argument_count, char **arguments)
                             String key = string_trim(string_split_left(&argument, '='));
                             String compiler_flags = string_trim(argument);
 
+                            if ((compiler_flags.count > 0) && (compiler_flags.data[0] == '"'))
+                            {
+                                compiler_flags.count -= 1;
+                                compiler_flags.data += 1;
+                            }
+
+                            if ((compiler_flags.count > 0) && (compiler_flags.data[compiler_flags.count - 1] == '"'))
+                            {
+                                compiler_flags.count -= 1;
+                            }
+
+                            compiler_flags = string_trim(compiler_flags);
+
                             if (!had_compiler_flags && strings_are_equal(key, StringLiteral("C_MAKE_COMPILER_FLAGS")) &&
                                 !compiler_is_msvc(compiler))
                             {
-                                if ((compiler_flags.count > 0) && (compiler_flags.data[0] == '"'))
-                                {
-                                    compiler_flags.count -= 1;
-                                    compiler_flags.data += 1;
-                                }
-
-                                if ((compiler_flags.count > 0) && (compiler_flags.data[compiler_flags.count - 1] == '"'))
-                                {
-                                    compiler_flags.count -= 1;
-                                }
-
-                                compiler_flags = string_trim(compiler_flags);
-
                                 command_append_command_line(&command, string_to_c_string(compiler_flags));
                                 command_append(&command, c_string_concat("-DC_MAKE_COMPILER_FLAGS=", string_to_c_string(compiler_flags)));
 
@@ -112,19 +112,6 @@ int main(int argument_count, char **arguments)
                             if (!had_msvc_flags && strings_are_equal(key, StringLiteral("C_MAKE_COMPILER_FLAGS.msvc")) &&
                                 compiler_is_msvc(compiler))
                             {
-                                if ((compiler_flags.count > 0) && (compiler_flags.data[0] == '"'))
-                                {
-                                    compiler_flags.count -= 1;
-                                    compiler_flags.data += 1;
-                                }
-
-                                if ((compiler_flags.count > 0) && (compiler_flags.data[compiler_flags.count - 1] == '"'))
-                                {
-                                    compiler_flags.count -= 1;
-                                }
-
-                                compiler_flags = string_trim(compiler_flags);
-
                                 command_append_command_line(&command, string_to_c_string(compiler_flags));
                                 command_append(&command, c_string_concat("-DC_MAKE_COMPILER_FLAGS=", string_to_c_string(compiler_flags)));
 
