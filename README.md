@@ -98,7 +98,7 @@ C_MAKE_ENTRY(command, argument_count, arguments)
         command_append(&cmd, c_string_path_concat(get_source_path(), "hello_world.c"));
         command_append_default_linker_flags(&cmd, get_target_architecture());
 
-        c_make_log(LogLevel, "compile 'hello_world'\n");
+        c_make_log(LogLevelInfo, "compile 'hello_world'\n");
         command_run(cmd);
     }
     else if (strings_are_equal(command, StringLiteral("install")))
@@ -150,7 +150,7 @@ C_MAKE_ENTRY(command, argument_count, arguments)
         c_make_command_append(&cmd, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
         c_make_command_append_default_linker_flags(&cmd, c_make_get_target_architecture());
 
-        c_make_log(CMakeLogLevel, "compile 'hello_world'\n");
+        c_make_log(CMakeLogLevelInfo, "compile 'hello_world'\n");
         c_make_command_run(cmd);
     }
     else if (c_make_strings_are_equal(command, CMakeStringLiteral("install")))
