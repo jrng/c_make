@@ -75,37 +75,40 @@ a `hello_world.c` file looks like this:
 #define C_MAKE_IMPLEMENTATION
 #include "c_make.h" // this depends on where you put the header file
 
-C_MAKE_ENTRY(target)
+C_MAKE_INFO(commands_info, configs_info)
 {
-    switch (target)
+    add_info(commands_info, StringLiteral("install"), StringLiteral("Install build artifacts."));
+
+    add_default_info(commands_info, configs_info);
+}
+
+C_MAKE_ENTRY(command, argument_count, arguments)
+{
+    if (strings_are_equal(command, COMMAND_BUILD))
     {
-        case TargetSetup:
-        {
-        } break;
+        Command cmd = { 0 };
 
-        case TargetBuild:
-        {
-            Command cmd = { 0 };
+        const char *target_c_compiler = get_target_c_compiler();
 
-            const char *target_c_compiler = get_target_c_compiler();
+        command_append(&cmd, target_c_compiler);
+        command_append_command_line(&cmd, get_target_c_flags());
+        command_append_default_compiler_flags(&cmd, get_build_type());
+        command_append_output_executable(&cmd, c_string_path_concat(get_build_path(), "hello_world"),
+                                               get_target_platform());
+        command_append(&cmd, c_string_path_concat(get_source_path(), "hello_world.c"));
+        command_append_default_linker_flags(&cmd, get_target_architecture());
 
-            command_append(&cmd, target_c_compiler);
-            command_append_command_line(&cmd, get_target_c_flags());
-            command_append_default_compiler_flags(&cmd, get_build_type());
-            command_append_output_executable(&cmd, c_string_path_concat(get_build_path(), "hello_world"),
-                                                   get_target_platform());
-            command_append(&cmd, c_string_path_concat(get_source_path(), "hello_world.c"));
-            command_append_default_linker_flags(&cmd, get_target_architecture());
-
-            c_make_log(LogLevel, "compile 'hello_world'\n");
-            command_run(cmd);
-        } break;
-
-        case TargetInstall:
-        {
-            copy_file(c_string_path_concat(get_build_path(), "hello_world"),
-                      c_string_path_concat(get_install_prefix(), "bin", "hello_world"));
-        } break;
+        c_make_log(LogLevel, "compile 'hello_world'\n");
+        command_run(cmd);
+    }
+    else if (strings_are_equal(command, StringLiteral("install")))
+    {
+        copy_file(c_string_path_concat(get_build_path(), "hello_world"),
+                  c_string_path_concat(get_install_prefix(), "bin", "hello_world"));
+    }
+    else
+    {
+        handle_default_commands(command, argument_count, arguments);
     }
 }
 ```
@@ -122,38 +125,42 @@ Alternatively you can just undefine the symbols that collide right after includi
 #define C_MAKE_NO_STRIP_PREFIX
 #include "c_make.h" // this depends on where you put the header file
 
-C_MAKE_ENTRY(target)
+C_MAKE_INFO(commands_info, configs_info)
 {
-    switch (target)
+    c_make_add_info(commands_info, CMakeStringLiteral("install"),
+                    CMakeStringLiteral("Install build artifacts."));
+
+    c_make_add_default_info(commands_info, configs_info);
+}
+
+C_MAKE_ENTRY(command, argument_count, arguments)
+{
+    if (c_make_strings_are_equal(command, C_MAKE_COMMAND_BUILD))
     {
-        case CMakeTargetSetup:
-        {
-        } break;
+        CMakeCommand cmd = { 0 };
 
-        case CMakeTargetBuild:
-        {
-            CMakeCommand cmd = { 0 };
+        const char *target_c_compiler = c_make_get_target_c_compiler();
 
-            const char *target_c_compiler = c_make_get_target_c_compiler();
+        c_make_command_append(&cmd, target_c_compiler);
+        c_make_command_append_command_line(&cmd, c_make_get_target_c_flags());
+        c_make_command_append_default_compiler_flags(&cmd, c_make_get_build_type());
+        c_make_command_append_output_executable(&cmd,
+                                                c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"),
+                                                c_make_get_target_platform());
+        c_make_command_append(&cmd, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
+        c_make_command_append_default_linker_flags(&cmd, c_make_get_target_architecture());
 
-            c_make_command_append(&cmd, target_c_compiler);
-            c_make_command_append_command_line(&cmd, c_make_get_target_c_flags());
-            c_make_command_append_default_compiler_flags(&cmd, c_make_get_build_type());
-            c_make_command_append_output_executable(&cmd,
-                                                    c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"),
-                                                    c_make_get_target_platform());
-            c_make_command_append(&cmd, c_make_c_string_path_concat(c_make_get_source_path(), "hello_world.c"));
-            c_make_command_append_default_linker_flags(&cmd, c_make_get_target_architecture());
-
-            c_make_log(CMakeLogLevel, "compile 'hello_world'\n");
-            c_make_command_run(cmd);
-        } break;
-
-        case CMakeTargetInstall:
-        {
-            c_make_copy_file(c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"),
-                             c_make_c_string_path_concat(c_make_get_install_prefix(), "bin", "hello_world"));
-        } break;
+        c_make_log(CMakeLogLevel, "compile 'hello_world'\n");
+        c_make_command_run(cmd);
+    }
+    else if (c_make_strings_are_equal(command, CMakeStringLiteral("install")))
+    {
+        c_make_copy_file(c_make_c_string_path_concat(c_make_get_build_path(), "hello_world"),
+                         c_make_c_string_path_concat(c_make_get_install_prefix(), "bin", "hello_world"));
+    }
+    else
+    {
+        c_make_handle_default_commands(command, argument_count, arguments);
     }
 }
 ```

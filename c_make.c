@@ -2,12 +2,19 @@
 #define C_MAKE_IMPLEMENTATION
 #include "c_make.h"
 
+C_MAKE_INFO(commands_info, configs_info)
+{
+    add_info(commands_info, StringLiteral("install"), StringLiteral("Run the install target on the given build directory."));
+
+    add_default_info(commands_info, configs_info);
+}
+
 C_MAKE_ENTRY(command, argument_count, arguments)
 {
     (void) argument_count;
     (void) arguments;
 
-    if (strings_are_equal(command, C_MAKE_COMMAND_BUILD))
+    if (strings_are_equal(command, COMMAND_BUILD))
     {
         Command command = { 0 };
 
@@ -37,5 +44,9 @@ C_MAKE_ENTRY(command, argument_count, arguments)
     else if (strings_are_equal(command, StringLiteral("install")))
     {
         copy_file(c_string_path_concat(get_build_path(), "c_make"), c_string_path_concat(get_install_prefix(), "bin", "c_make"));
+    }
+    else
+    {
+        handle_default_commands(command, argument_count, arguments);
     }
 }
