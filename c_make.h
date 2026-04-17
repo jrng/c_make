@@ -535,6 +535,7 @@ C_MAKE_DEF bool c_make_setup_java(bool logging);
 
 C_MAKE_DEF void c_make_config_set(const char *key, const char *value);
 C_MAKE_DEF CMakeConfigValue c_make_config_get(const char *key);
+C_MAKE_DEF void c_make_print_config(void);
 
 C_MAKE_DEF bool c_make_store_config(const char *file_name);
 C_MAKE_DEF bool c_make_load_config(const char *file_name);
@@ -5649,6 +5650,7 @@ int main(int argument_count, char **arguments)
 #    define setup_java c_make_setup_java
 #    define config_set c_make_config_set
 #    define config_get c_make_config_get
+#    define print_config c_make_print_config
 #    define store_config c_make_store_config
 #    define load_config c_make_load_config
 #    define needs_rebuild c_make_needs_rebuild
