@@ -502,6 +502,7 @@ C_MAKE_DEF CMakeString c_make_string_split_left(CMakeString *str, char c);
 C_MAKE_DEF CMakeString c_make_string_split_right(CMakeString *str, char c);
 C_MAKE_DEF CMakeString c_make_string_split_right_path_separator(CMakeString *str);
 C_MAKE_DEF CMakeString c_make_string_trim(CMakeString str);
+C_MAKE_DEF CMakeString c_make_string_trim_characters(CMakeString str, CMakeString chars);
 C_MAKE_DEF size_t c_make_string_find(CMakeString str, CMakeString pattern);
 C_MAKE_DEF CMakeString c_make_string_replace_all_with_memory(CMakeMemory *memory, CMakeString str, CMakeString pattern, CMakeString replace);
 C_MAKE_DEF char *c_make_string_to_c_string_with_memory(CMakeMemory *memory, CMakeString str);
@@ -1657,16 +1658,32 @@ c_make_string_split_right_path_separator(CMakeString *str)
 C_MAKE_DEF CMakeString
 c_make_string_trim(CMakeString str)
 {
-    while (str.count && ((str.data[str.count - 1] == ' ') ||
-                         (str.data[str.count - 1] == '\t') ||
-                         (str.data[str.count - 1] == '\r') ||
-                         (str.data[str.count - 1] == '\n')))
+    return c_make_string_trim_characters(str, CMakeStringLiteral(" \t\r\n"));
+}
+
+static bool
+__c_make_string_contains_character(CMakeString str, char c)
+{
+    for (size_t i = 0; i < str.count; i += 1)
+    {
+        if (str.data[i] == c)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+C_MAKE_DEF CMakeString
+c_make_string_trim_characters(CMakeString str, CMakeString chars)
+{
+    while (str.count && __c_make_string_contains_character(chars, str.data[str.count - 1]))
     {
         str.count -= 1;
     }
 
-    while (str.count && ((str.data[0] == ' ') || (str.data[0] == '\t') ||
-                         (str.data[0] == '\r') || (str.data[0] == '\n')))
+    while (str.count && __c_make_string_contains_character(chars, str.data[0]))
     {
         str.count -= 1;
         str.data += 1;
@@ -5802,6 +5819,7 @@ int main(int argument_count, char **arguments)
 #    define string_split_right c_make_string_split_right
 #    define string_split_right_path_separator c_make_string_split_right_path_separator
 #    define string_trim c_make_string_trim
+#    define string_trim_characters c_make_string_trim_characters
 #    define string_find c_make_string_find
 #    define string_replace_all_with_memory c_make_string_replace_all_with_memory
 #    define string_to_c_string_with_memory c_make_string_to_c_string_with_memory
