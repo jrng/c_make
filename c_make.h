@@ -105,6 +105,9 @@
 #define CMakeStringLiteral(str) c_make_make_string((char *) (str), sizeof(str) - 1)
 #define CMakeCString(str) c_make_make_string((char *) (str), c_make_get_c_string_length(str))
 
+#define c_make_string_formated(format, ...) c_make_string_formated_with_memory(&_c_make_context.public_memory, format, __VA_ARGS__)
+#define c_make_c_string_formated(format, ...) c_make_c_string_formated_with_memory(&_c_make_context.public_memory, format, __VA_ARGS__)
+
 #define c_make_string_replace_all(str, pattern, replace) c_make_string_replace_all_with_memory(&_c_make_context.public_memory, str, pattern, replace)
 #define c_make_string_to_c_string(str) c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, str)
 
@@ -476,6 +479,9 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
 C_MAKE_DEF void c_make_set_failed(bool failed);
 C_MAKE_DEF bool c_make_get_failed(void);
 C_MAKE_DEF void c_make_log(CMakeLogLevel log_level, const char *format, ...) CMakePrintfFormat(2, 3);
+
+C_MAKE_DEF CMakeString c_make_string_formated_with_memory(CMakeMemory *memory, const char *format, ...) CMakePrintfFormat(2, 3);
+C_MAKE_DEF const char *c_make_c_string_formated_with_memory(CMakeMemory *memory, const char *format, ...) CMakePrintfFormat(2, 3);
 
 C_MAKE_DEF void *c_make_memory_allocate(CMakeMemory *memory, size_t size);
 C_MAKE_DEF void *c_make_memory_reallocate(CMakeMemory *memory, void *old_ptr, size_t old_size, size_t new_size);
@@ -985,6 +991,54 @@ c_make_log(CMakeLogLevel log_level, const char *format, ...)
     fprintf(stderr, "%s", _c_make_context.reset);
     fflush(stderr);
     va_end(args);
+}
+
+C_MAKE_DEF CMakeString
+c_make_string_formated_with_memory(CMakeMemory *memory, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    int ret = vsnprintf(0, 0, format, args);
+
+    va_end(args);
+
+    assert(ret >= 0);
+
+    CMakeString result;
+    result.count = ret;
+    result.data = (char *) c_make_memory_allocate(memory, result.count + 1);
+
+    va_start(args, format);
+
+    vsnprintf(result.data, result.count + 1, format, args);
+
+    va_end(args);
+
+    return result;
+}
+
+C_MAKE_DEF const char *
+c_make_c_string_formated_with_memory(CMakeMemory *memory, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+
+    int ret = vsnprintf(0, 0, format, args);
+
+    va_end(args);
+
+    assert(ret >= 0);
+
+    char *result = (char *) c_make_memory_allocate(memory, ret + 1);
+
+    va_start(args, format);
+
+    vsnprintf(result, ret + 1, format, args);
+
+    va_end(args);
+
+    return result;
 }
 
 C_MAKE_DEF void *
@@ -5758,6 +5812,10 @@ int main(int argument_count, char **arguments)
 #    define AndroidSdk CMakeAndroidSdk
 #    define StringLiteral CMakeStringLiteral
 #    define CString CMakeCString
+#    define string_formated c_make_string_formated
+#    define string_formated_with_memory c_make_string_formated_with_memory
+#    define c_string_formated c_make_c_string_formated
+#    define c_string_formated_with_memory c_make_c_string_formated_with_memory
 #    define string_replace_all c_make_string_replace_all
 #    define string_to_c_string c_make_string_to_c_string
 #    define string_concat c_make_string_concat
