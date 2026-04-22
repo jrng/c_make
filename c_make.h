@@ -5223,6 +5223,7 @@ c_make_add_default_info(CMakeInfoArray *commands_info, CMakeInfoArray *configs_i
     (void) configs_info;
 
     c_make_add_info(commands_info, CMakeStringLiteral("config"), CMakeStringLiteral("Print the configuration for the given build directory."));
+    c_make_add_info(commands_info, CMakeStringLiteral("clean") , CMakeStringLiteral("Clean the build directory, while keeping the configuration."));
 }
 
 C_MAKE_DEF void
@@ -5238,6 +5239,51 @@ c_make_handle_default_commands(CMakeString command, size_t argument_count, CMake
     else if (c_make_strings_are_equal(command, CMakeStringLiteral("config")))
     {
         c_make_print_config();
+    }
+    else if (c_make_strings_are_equal(command, CMakeStringLiteral("clean")))
+    {
+        const char *build_path = c_make_get_build_path();
+        c_make_log(CMakeLogLevelInfo, "clean '%s'\n", build_path);
+
+        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+        CMakeDirectory *dir = c_make_directory_open(temp_memory.memory, build_path);
+
+        if (dir)
+        {
+            CMakeDirectoryEntry *entry;
+
+            while ((entry = c_make_directory_get_next_entry(temp_memory.memory, dir)))
+            {
+                size_t memory_used = c_make_memory_get_used(temp_memory.memory);
+
+                switch (entry->type)
+                {
+                    case CMakeFileTypeDirectory:
+                    {
+                        if (!c_make_strings_are_equal(entry->name, CMakeStringLiteral(".")) &&
+                            !c_make_strings_are_equal(entry->name, CMakeStringLiteral("..")))
+                        {
+                            c_make_delete_directory_recursively(c_make_c_string_path_concat_with_memory(temp_memory.memory, build_path, c_make_string_to_c_string_with_memory(temp_memory.memory, entry->name)));
+                        }
+                    } break;
+
+                    case CMakeFileTypeRegular:
+                    case CMakeFileTypeOther:
+                    {
+                        if (!c_make_strings_are_equal(entry->name, CMakeStringLiteral("c_make.txt")) &&
+                            !c_make_strings_are_equal(entry->name, CMakeStringLiteral(".gitignore")))
+                        {
+                            c_make_delete_file(c_make_c_string_path_concat_with_memory(temp_memory.memory, build_path, c_make_string_to_c_string_with_memory(temp_memory.memory, entry->name)));
+                        }
+                    } break;
+                }
+
+                c_make_memory_set_used(temp_memory.memory, memory_used);
+            }
+        }
+
+        c_make_end_temporary_memory(temp_memory);
     }
     else
     {
