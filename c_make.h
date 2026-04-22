@@ -84,6 +84,14 @@
 #  endif
 #endif
 
+#if defined(__clang__)
+#  define CMakePrintfFormat(format_string_index, argument_start_index) __attribute__ ((format (printf, format_string_index, argument_start_index)))
+#elif defined(__GNUC__)
+#  define CMakePrintfFormat(format_string_index, argument_start_index) __attribute__ ((format (gnu_printf, format_string_index, argument_start_index)))
+#else
+#  define CMakePrintfFormat(format_string_index, argument_start_index)
+#endif
+
 #define _CMakeStr(str) #str
 #define CMakeStr(str) _CMakeStr(str)
 
@@ -467,7 +475,7 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
 
 C_MAKE_DEF void c_make_set_failed(bool failed);
 C_MAKE_DEF bool c_make_get_failed(void);
-C_MAKE_DEF void c_make_log(CMakeLogLevel log_level, const char *format, ...);
+C_MAKE_DEF void c_make_log(CMakeLogLevel log_level, const char *format, ...) CMakePrintfFormat(2, 3);
 
 C_MAKE_DEF void *c_make_memory_allocate(CMakeMemory *memory, size_t size);
 C_MAKE_DEF void *c_make_memory_reallocate(CMakeMemory *memory, void *old_ptr, size_t old_size, size_t new_size);
@@ -5084,7 +5092,7 @@ c_make_handle_default_commands(CMakeString command, size_t argument_count, CMake
     }
     else
     {
-        c_make_log(CMakeLogLevelWarning, "unknown command '%" CMakeStringFmt "'\n", command);
+        c_make_log(CMakeLogLevelWarning, "unknown command '%" CMakeStringFmt "'\n", CMakeStringArg(command));
 
         CMakeString default_commands[] = {
             CMakeStringConstant("setup"),
@@ -5095,7 +5103,7 @@ c_make_handle_default_commands(CMakeString command, size_t argument_count, CMake
         {
             if (__c_make_string_levenshtein_distance_is_in_1_to_n(command, default_commands[i], 3))
             {
-                c_make_log(CMakeLogLevelWarning, "   did you mean '%" CMakeStringFmt "'\n", default_commands[i]);
+                c_make_log(CMakeLogLevelWarning, "   did you mean '%" CMakeStringFmt "'\n", CMakeStringArg(default_commands[i]));
             }
         }
 
@@ -5110,7 +5118,7 @@ c_make_handle_default_commands(CMakeString command, size_t argument_count, CMake
         {
             if (__c_make_string_levenshtein_distance_is_in_1_to_n(command, commands_info.items[i].name, 3))
             {
-                c_make_log(CMakeLogLevelWarning, "   did you mean '%" CMakeStringFmt "'\n", commands_info.items[i].name);
+                c_make_log(CMakeLogLevelWarning, "   did you mean '%" CMakeStringFmt "'\n", CMakeStringArg(commands_info.items[i].name));
             }
         }
 
@@ -5501,7 +5509,7 @@ int main(int argument_count, char **arguments)
                     if (__c_make_string_levenshtein_distance_is_in_1_to_n(key, known_config_keys[i], 4))
                     {
                         c_make_log(CMakeLogLevelWarning, "setting config key '%" CMakeStringFmt "'; did you mean '%" CMakeStringFmt "'\n",
-                                                         key, known_config_keys[i]);
+                                                         CMakeStringArg(key), CMakeStringArg(known_config_keys[i]));
                     }
                 }
 
@@ -5510,7 +5518,7 @@ int main(int argument_count, char **arguments)
                     if (__c_make_string_levenshtein_distance_is_in_1_to_n(key, configs_info.items[i].name, 4))
                     {
                         c_make_log(CMakeLogLevelWarning, "setting config key '%" CMakeStringFmt "'; did you mean '%" CMakeStringFmt "'\n",
-                                                         key, configs_info.items[i].name);
+                                                         CMakeStringArg(key), CMakeStringArg(configs_info.items[i].name));
                     }
                 }
 
