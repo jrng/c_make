@@ -595,6 +595,8 @@ C_MAKE_DEF bool c_make_write_entire_file(const char *file_name, CMakeString cont
 C_MAKE_DEF bool c_make_copy_file(const char *src_file, const char *dst_file);
 C_MAKE_DEF bool c_make_rename_file(const char *old_file_name, const char *new_file_name);
 C_MAKE_DEF bool c_make_delete_file(const char *file_name);
+C_MAKE_DEF bool c_make_delete_directory(const char *directory_name);
+C_MAKE_DEF bool c_make_delete_directory_recursively(const char *directory_name);
 
 C_MAKE_DEF bool c_make_has_slash_or_backslash(const char *path);
 C_MAKE_DEF CMakeString c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name);
@@ -4037,6 +4039,7 @@ c_make_delete_file(const char *file_name)
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     if (unlink(file_name))
     {
+        // TODO: also handle ENOTDIR?
         if (errno == ENOENT)
         {
             return true;
@@ -4047,6 +4050,98 @@ c_make_delete_file(const char *file_name)
 
     return true;
 #endif
+}
+
+C_MAKE_DEF bool
+c_make_delete_directory(const char *directory_name)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    LPWSTR utf16_directory_name = c_make_c_string_utf8_to_utf16(temp_memory.memory, directory_name);
+
+    bool result = RemoveDirectory(utf16_directory_name) ? true : false;
+
+    // TODO: ERROR_PATH_NOT_FOUND
+    if (!result && (GetLastError() == ERROR_FILE_NOT_FOUND))
+    {
+        result = true;
+    }
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return result;
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    if (rmdir(directory_name))
+    {
+        // TODO: also handle ENOTDIR?
+        if (errno == ENOENT)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    return true;
+#endif
+}
+
+C_MAKE_DEF bool
+c_make_delete_directory_recursively(const char *directory_name)
+{
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+
+    bool result = false;
+
+    CMakeDirectory *dir = c_make_directory_open(temp_memory.memory, directory_name);
+
+    if (dir)
+    {
+        result = true;
+
+        CMakeDirectoryEntry *entry;
+
+        while ((entry = c_make_directory_get_next_entry(temp_memory.memory, dir)))
+        {
+            size_t memory_used = c_make_memory_get_used(temp_memory.memory);
+
+            switch (entry->type)
+            {
+                case CMakeFileTypeDirectory:
+                {
+                    if (!c_make_strings_are_equal(entry->name, CMakeStringLiteral(".")) &&
+                        !c_make_strings_are_equal(entry->name, CMakeStringLiteral("..")))
+                    {
+                        if (!c_make_delete_directory_recursively(c_make_c_string_path_concat_with_memory(temp_memory.memory, directory_name, c_make_string_to_c_string_with_memory(temp_memory.memory, entry->name))))
+                        {
+                            result = false;
+                        }
+                    }
+                } break;
+
+                case CMakeFileTypeRegular:
+                case CMakeFileTypeOther:
+                {
+                    if (!c_make_delete_file(c_make_c_string_path_concat_with_memory(temp_memory.memory, directory_name, c_make_string_to_c_string_with_memory(temp_memory.memory, entry->name))))
+                    {
+                        result = false;
+                    }
+                } break;
+            }
+
+            c_make_memory_set_used(temp_memory.memory, memory_used);
+        }
+    }
+
+    c_make_end_temporary_memory(temp_memory);
+
+    if (result)
+    {
+        result = c_make_delete_directory(directory_name);
+    }
+
+    return result;
 }
 
 C_MAKE_DEF bool
@@ -5953,6 +6048,8 @@ int main(int argument_count, char **arguments)
 #    define copy_file c_make_copy_file
 #    define rename_file c_make_rename_file
 #    define delete_file c_make_delete_file
+#    define delete_directory c_make_delete_directory
+#    define delete_directory_recursively c_make_delete_directory_recursively
 #    define has_slash_or_backslash c_make_has_slash_or_backslash
 #    define get_environment_variable c_make_get_environment_variable
 #    define find_program c_make_find_program
