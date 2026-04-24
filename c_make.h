@@ -58,7 +58,10 @@
 #      define C_MAKE_ARCHITECTURE_RISCV64 1
 #    endif
 #  else
-#    if defined(_M_AMD64)
+#    if defined(_M_ARM64)
+#      undef C_MAKE_ARCHITECTURE_AARCH64
+#      define C_MAKE_ARCHITECTURE_AARCH64 1
+#    elif defined(_M_AMD64)
 #      undef C_MAKE_ARCHITECTURE_AMD64
 #      define C_MAKE_ARCHITECTURE_AMD64 1
 #    endif
@@ -2625,8 +2628,13 @@ c_make_get_msvc_library_manager(CMakeArchitecture target_architecture)
             arch = "arm64";
         }
 
+#if C_MAKE_ARCHITECTURE_AARCH64
+        result = c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
+                                             visual_studio_install.version, "bin", "Hostarm64", arch, "lib.exe");
+#else
         result = c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
                                              visual_studio_install.version, "bin", "Hostx64", arch, "lib.exe");
+#endif
     }
 
     return result;
@@ -2647,8 +2655,13 @@ c_make_get_msvc_compiler(CMakeArchitecture target_architecture)
             arch = "arm64";
         }
 
+#if C_MAKE_ARCHITECTURE_AARCH64
+        result = c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
+                                             visual_studio_install.version, "bin", "Hostarm64", arch, "cl.exe");
+#else
         result = c_make_c_string_path_concat(visual_studio_install.root_path, "VC", "Tools", "MSVC",
                                              visual_studio_install.version, "bin", "Hostx64", arch, "cl.exe");
+#endif
     }
 
     return result;
