@@ -512,6 +512,7 @@ C_MAKE_DEF void c_make_command_append_default_linker_flags(CMakeCommand *command
 C_MAKE_DEF CMakeString c_make_command_to_string(CMakeMemory *memory, CMakeCommand command);
 
 C_MAKE_DEF bool c_make_strings_are_equal(CMakeString a, CMakeString b);
+C_MAKE_DEF void c_make_string_advance(CMakeString *str, size_t count);
 C_MAKE_DEF bool c_make_string_ends_with(CMakeString str, CMakeString suffix);
 C_MAKE_DEF bool c_make_string_starts_with(CMakeString str, CMakeString prefix);
 C_MAKE_DEF CMakeString c_make_copy_string(CMakeMemory *memory, CMakeString str);
@@ -1604,6 +1605,18 @@ c_make_strings_are_equal(CMakeString a, CMakeString b)
     }
 
     return true;
+}
+
+C_MAKE_DEF void
+c_make_string_advance(CMakeString *str, size_t count)
+{
+    if (count > str->count)
+    {
+        count = str->count;
+    }
+
+    str->count -= count;
+    str->data  += count;
 }
 
 C_MAKE_DEF bool
@@ -6032,6 +6045,7 @@ int main(int argument_count, char **arguments)
 #    define command_append_default_linker_flags c_make_command_append_default_linker_flags
 #    define command_to_string c_make_command_to_string
 #    define strings_are_equal c_make_strings_are_equal
+#    define string_advance c_make_string_advance
 #    define string_ends_with c_make_string_ends_with
 #    define string_starts_with c_make_string_starts_with
 #    define copy_string c_make_copy_string
