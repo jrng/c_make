@@ -2,12 +2,9 @@
 // See end of file for full license
 
 // TODO:
-// - support android as a platform
-// - add logging api
 // - documentation
 // - improve c_make_command_to_string()
 // - improve c_make_command_append_command_line()
-// - support comments in config file
 
 #ifndef __C_MAKE_INCLUDE__
 #define __C_MAKE_INCLUDE__
@@ -3331,6 +3328,35 @@ c_make_store_config(const char *file_name)
     return result;
 }
 
+static void
+__c_make_string_skip_whitespace(CMakeString *str)
+{
+    while (str->count && __c_make_string_contains_character(CMakeStringLiteral(" \t"), str->data[0]))
+    {
+        str->count -= 1;
+        str->data += 1;
+    }
+}
+
+static CMakeString
+__c_make_string_parse_identifier(CMakeString *str)
+{
+    CMakeString result = *str;
+
+    while (str->count && (((str->data[0] >= 'a') && (str->data[0] <= 'z')) ||
+                          ((str->data[0] >= 'A') && (str->data[0] <= 'Z')) ||
+                          ((str->data[0] >= '0') && (str->data[0] <= '9')) ||
+                          (str->data[0] == '_')))
+    {
+        str->count -= 1;
+        str->data += 1;
+    }
+
+    result.count = str->data - result.data;
+
+    return result;
+}
+
 C_MAKE_DEF bool
 c_make_load_config(const char *file_name)
 {
@@ -3348,29 +3374,38 @@ c_make_load_config(const char *file_name)
     while (config_string.count)
     {
         CMakeString line = c_make_string_split_left(&config_string, '\n');
-        CMakeString key = c_make_string_trim(c_make_string_split_left(&line, '='));
-        CMakeString value = c_make_string_trim(line);
+        __c_make_string_skip_whitespace(&line);
+        CMakeString key = __c_make_string_parse_identifier(&line);
+        __c_make_string_skip_whitespace(&line);
 
-        if (key.count && value.count)
+        if (line.count && (line.data[0] == '='))
         {
-            if (value.data[0] == '"')
-            {
-                value.count -= 1;
-                value.data += 1;
+            line.count -= 1;
+            line.data += 1;
 
-                if (value.count && (value.data[value.count - 1] == '"'))
+            __c_make_string_skip_whitespace(&line);
+
+            if (line.count && (line.data[0] == '\"'))
+            {
+                line.count -= 1;
+                line.data += 1;
+
+                CMakeString value = line;
+
+                while (line.count && (line.data[0] != '\"'))
                 {
-                    value.count -= 1;
+                    line.count -= 1;
+                    line.data += 1;
                 }
 
-                c_make_memory_set_used(temp_memory.memory, memory_used);
+                if (line.count)
+                {
+                    value.count = line.data - value.data;
+                    c_make_memory_set_used(temp_memory.memory, memory_used);
 
-                c_make_config_set(c_make_string_to_c_string_with_memory(temp_memory.memory, key),
-                                  c_make_string_to_c_string_with_memory(temp_memory.memory, value));
-            }
-            else
-            {
-                // not a string
+                    c_make_config_set(c_make_string_to_c_string_with_memory(temp_memory.memory, key),
+                                      c_make_string_to_c_string_with_memory(temp_memory.memory, value));
+                }
             }
         }
     }
