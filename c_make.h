@@ -576,9 +576,6 @@ C_MAKE_DEF void c_make_config_set(const char *key, const char *value);
 C_MAKE_DEF CMakeConfigValue c_make_config_get(const char *key);
 C_MAKE_DEF void c_make_print_config(void);
 
-C_MAKE_DEF bool c_make_store_config(const char *file_name);
-C_MAKE_DEF bool c_make_load_config(const char *file_name);
-
 C_MAKE_DEF bool c_make_needs_rebuild(const char *output_file, size_t input_file_count, const char **input_files);
 C_MAKE_DEF bool c_make_needs_rebuild_single_source(const char *output_file, const char *input_file);
 
@@ -3301,121 +3298,6 @@ c_make_print_config(void)
 }
 
 C_MAKE_DEF bool
-c_make_store_config(const char *file_name)
-{
-    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
-
-    CMakeString config_string = CMakeStringLiteral("");
-
-    for (size_t i = 0; i < _c_make_context.config.count; i += 1)
-    {
-        CMakeConfigEntry *entry = _c_make_context.config.items + i;
-
-        config_string = c_make_string_concat_with_memory(temp_memory.memory, config_string,
-                                                         entry->key, CMakeStringLiteral(" = \""),
-                                                         entry->value, CMakeStringLiteral("\"\n"));
-    }
-
-    bool result = c_make_write_entire_file(file_name, config_string);
-
-    if (!result)
-    {
-        c_make_log(CMakeLogLevelError, "could not write config file '%s'\n", file_name);
-    }
-
-    c_make_end_temporary_memory(temp_memory);
-
-    return result;
-}
-
-static void
-__c_make_string_skip_whitespace(CMakeString *str)
-{
-    while (str->count && __c_make_string_contains_character(CMakeStringLiteral(" \t"), str->data[0]))
-    {
-        str->count -= 1;
-        str->data += 1;
-    }
-}
-
-static CMakeString
-__c_make_string_parse_identifier(CMakeString *str)
-{
-    CMakeString result = *str;
-
-    while (str->count && (((str->data[0] >= 'a') && (str->data[0] <= 'z')) ||
-                          ((str->data[0] >= 'A') && (str->data[0] <= 'Z')) ||
-                          ((str->data[0] >= '0') && (str->data[0] <= '9')) ||
-                          (str->data[0] == '_')))
-    {
-        str->count -= 1;
-        str->data += 1;
-    }
-
-    result.count = str->data - result.data;
-
-    return result;
-}
-
-C_MAKE_DEF bool
-c_make_load_config(const char *file_name)
-{
-    CMakeString config_string = { 0, 0 };
-
-    if (!c_make_read_entire_file(file_name, &config_string))
-    {
-        c_make_log(CMakeLogLevelError, "could not read config file '%s'\n", file_name);
-        return false;
-    }
-
-    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
-    size_t memory_used = c_make_memory_get_used(temp_memory.memory);
-
-    while (config_string.count)
-    {
-        CMakeString line = c_make_string_split_left(&config_string, '\n');
-        __c_make_string_skip_whitespace(&line);
-        CMakeString key = __c_make_string_parse_identifier(&line);
-        __c_make_string_skip_whitespace(&line);
-
-        if (line.count && (line.data[0] == '='))
-        {
-            line.count -= 1;
-            line.data += 1;
-
-            __c_make_string_skip_whitespace(&line);
-
-            if (line.count && (line.data[0] == '\"'))
-            {
-                line.count -= 1;
-                line.data += 1;
-
-                CMakeString value = line;
-
-                while (line.count && (line.data[0] != '\"'))
-                {
-                    line.count -= 1;
-                    line.data += 1;
-                }
-
-                if (line.count)
-                {
-                    value.count = line.data - value.data;
-                    c_make_memory_set_used(temp_memory.memory, memory_used);
-
-                    c_make_config_set(c_make_string_to_c_string_with_memory(temp_memory.memory, key),
-                                      c_make_string_to_c_string_with_memory(temp_memory.memory, value));
-                }
-            }
-        }
-    }
-
-    c_make_end_temporary_memory(temp_memory);
-
-    return true;
-}
-
-C_MAKE_DEF bool
 c_make_needs_rebuild(const char *output_file, size_t input_file_count, const char **input_files)
 {
 #if C_MAKE_PLATFORM_WINDOWS
@@ -5073,35 +4955,208 @@ c_make_handle_default_commands(CMakeString command, size_t argument_count, CMake
 
 #else
 
-static const CMakeString known_config_keys[] = {
-    CMakeStringConstant("android_aapt_executable"),
-    CMakeStringConstant("android_apksigner_executable"),
-    CMakeStringConstant("android_d8_executable"),
-    CMakeStringConstant("android_platform_jar"),
-    CMakeStringConstant("android_zipalign_executable"),
-    CMakeStringConstant("build_type"),
-    CMakeStringConstant("host_ar"),
-    CMakeStringConstant("host_c_compiler"),
-    CMakeStringConstant("host_cpp_compiler"),
-    CMakeStringConstant("install_prefix"),
-    CMakeStringConstant("java_jar_executable"),
-    CMakeStringConstant("java_jarsigner_executable"),
-    CMakeStringConstant("java_javac_executable"),
-    CMakeStringConstant("java_keytool_executable"),
-    CMakeStringConstant("pkg_config_executable"),
-    CMakeStringConstant("target_architecture"),
-    CMakeStringConstant("target_ar"),
-    CMakeStringConstant("target_c_compiler"),
-    CMakeStringConstant("target_c_flags"),
-    CMakeStringConstant("target_cpp_compiler"),
-    CMakeStringConstant("target_cpp_flags"),
-    CMakeStringConstant("target_platform"),
-    CMakeStringConstant("visual_studio_root_path"),
-    CMakeStringConstant("visual_studio_version"),
-    CMakeStringConstant("windows_rc_executable"),
-    CMakeStringConstant("windows_sdk_root_path"),
-    CMakeStringConstant("windows_sdk_version"),
+static const CMakeInfo known_configs[] = {
+    { CMakeStringConstant("android_aapt_executable")     , CMakeStringConstant("Path to the android aapt executable.")                             },
+    { CMakeStringConstant("android_apksigner_executable"), CMakeStringConstant("Path to the android apksigner executable.")                        },
+    { CMakeStringConstant("android_d8_executable")       , CMakeStringConstant("Path to the android d8 executable.")                               },
+    { CMakeStringConstant("android_platform_jar")        , CMakeStringConstant("Path to the android platforms 'android.jar'.")                     },
+    { CMakeStringConstant("android_zipalign_executable") , CMakeStringConstant("Path to the android zipalign executable.")                         },
+    { CMakeStringConstant("build_type")                  , CMakeStringConstant("Build type. Either 'debug', 'reldebug' or 'release'.\n"
+                                                                               "Default: 'debug'")                                                 },
+    { CMakeStringConstant("host_ar")                     , CMakeStringConstant("Path to or name of the host archive/library program.")             },
+    { CMakeStringConstant("host_c_compiler")             , CMakeStringConstant("Path to or name of the host c compiler.")                          },
+    { CMakeStringConstant("host_cpp_compiler")           , CMakeStringConstant("Path to or name of the host c++ compiler.")                        },
+    { CMakeStringConstant("install_prefix")              , CMakeStringConstant("Install prefix. Defaults to '/usr/local'.")                        },
+    { CMakeStringConstant("java_jar_executable")         , CMakeStringConstant("Path to the java jar executable.")                                 },
+    { CMakeStringConstant("java_jarsigner_executable")   , CMakeStringConstant("Path to the java jarsigner executable.")                           },
+    { CMakeStringConstant("java_javac_executable")       , CMakeStringConstant("Path to the java compiler (javac).")                               },
+    { CMakeStringConstant("java_keytool_executable")     , CMakeStringConstant("Path to the java keytool executable.")                             },
+    { CMakeStringConstant("pkg_config_executable")       , CMakeStringConstant("Path to the pkg-config executable.")                               },
+    { CMakeStringConstant("target_architecture")         , CMakeStringConstant("Architecture of the target. Either 'amd64', 'aarch64',\n"
+                                                                               "'riscv64', 'wasm32' or 'wasm64'. The default is the\n"
+                                                                               "host architecture.")                                               },
+    { CMakeStringConstant("target_ar")                   , CMakeStringConstant("Path to or name of the target archive/library program.")           },
+    { CMakeStringConstant("target_c_compiler")           , CMakeStringConstant("Path to or name of the target c compiler.")                        },
+    { CMakeStringConstant("target_c_flags")              , CMakeStringConstant("Flags for the target c build.")                                    },
+    { CMakeStringConstant("target_cpp_compiler")         , CMakeStringConstant("Path to or name of the target c++ compiler.")                      },
+    { CMakeStringConstant("target_cpp_flags")            , CMakeStringConstant("Flags for the target c++ build.")                                  },
+    { CMakeStringConstant("target_platform")             , CMakeStringConstant("Platform of the target. Either 'android', 'freebsd',\n"
+                                                                               "'windows', 'linux', 'macos' or 'web'. The default is\n"
+                                                                               "the host platform.")                                               },
+    { CMakeStringConstant("visual_studio_root_path")     , CMakeStringConstant("Path to the visual studio install. This should be the directory\n"
+                                                                               "in which you find 'VC\\Tools\\MSVC\\<version>'.\n")                },
+    { CMakeStringConstant("visual_studio_version")       , CMakeStringConstant("The version of the visual studio install.")                        },
+    { CMakeStringConstant("windows_rc_executable")       , CMakeStringConstant("Path to the windows resource compiler executable.")                },
+    { CMakeStringConstant("windows_sdk_root_path")       , CMakeStringConstant("Path to the windows sdk. This should be the directory\n"
+                                                                               "in which you find 'bin', 'Include' and 'Lib'.")                    },
+    { CMakeStringConstant("windows_sdk_version")         , CMakeStringConstant("The version of the windows sdk.")                                  },
 };
+
+static bool
+__c_make_store_config(const char *file_name, CMakeInfoArray *configs_info)
+{
+    // TODO: a string builder would be nice for this, a lot of copying is happening here...
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+    CMakeTemporaryMemory new_temp_memory;
+
+    CMakeString config_string = CMakeStringLiteral("");
+
+    for (size_t i = 0; i < _c_make_context.config.count; i += 1)
+    {
+        CMakeConfigEntry *entry = _c_make_context.config.items + i;
+
+        CMakeInfo *info = 0;
+
+        for (size_t j = 0; j < configs_info->count; j += 1)
+        {
+            if (c_make_strings_are_equal(configs_info->items[j].name, entry->key))
+            {
+                info = configs_info->items + j;
+                break;
+            }
+        }
+
+        if (info && info->desc.count)
+        {
+            CMakeString desc = info->desc;
+            CMakeString line = c_make_string_split_left(&desc, '\n');
+
+            new_temp_memory = c_make_begin_temporary_memory(1, &temp_memory.memory);
+
+            if (i > 0)
+            {
+                config_string = c_make_string_concat_with_memory(new_temp_memory.memory, config_string,
+                                                                 CMakeStringLiteral("\n# "), line,
+                                                                 CMakeStringLiteral("\n"));
+            }
+            else
+            {
+                config_string = c_make_string_concat_with_memory(new_temp_memory.memory, config_string,
+                                                                 CMakeStringLiteral("# "), line,
+                                                                 CMakeStringLiteral("\n"));
+            }
+
+            c_make_end_temporary_memory(temp_memory);
+            temp_memory = new_temp_memory;
+
+            while (desc.count)
+            {
+                line = c_make_string_split_left(&desc, '\n');
+                new_temp_memory = c_make_begin_temporary_memory(1, &temp_memory.memory);
+                config_string = c_make_string_concat_with_memory(new_temp_memory.memory, config_string,
+                                                                 CMakeStringLiteral("# "), line,
+                                                                 CMakeStringLiteral("\n"));
+                c_make_end_temporary_memory(temp_memory);
+                temp_memory = new_temp_memory;
+            }
+        }
+
+        new_temp_memory = c_make_begin_temporary_memory(1, &temp_memory.memory);
+        config_string = c_make_string_concat_with_memory(new_temp_memory.memory, config_string,
+                                                         entry->key, CMakeStringLiteral(" = \""),
+                                                         entry->value, CMakeStringLiteral("\"\n"));
+        c_make_end_temporary_memory(temp_memory);
+        temp_memory = new_temp_memory;
+    }
+
+    bool result = c_make_write_entire_file(file_name, config_string);
+
+    if (!result)
+    {
+        c_make_log(CMakeLogLevelError, "could not write config file '%s'\n", file_name);
+    }
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return result;
+}
+
+static void
+__c_make_string_skip_whitespace(CMakeString *str)
+{
+    while (str->count && __c_make_string_contains_character(CMakeStringLiteral(" \t"), str->data[0]))
+    {
+        str->count -= 1;
+        str->data += 1;
+    }
+}
+
+static CMakeString
+__c_make_string_parse_identifier(CMakeString *str)
+{
+    CMakeString result = *str;
+
+    while (str->count && (((str->data[0] >= 'a') && (str->data[0] <= 'z')) ||
+                          ((str->data[0] >= 'A') && (str->data[0] <= 'Z')) ||
+                          ((str->data[0] >= '0') && (str->data[0] <= '9')) ||
+                          (str->data[0] == '_')))
+    {
+        str->count -= 1;
+        str->data += 1;
+    }
+
+    result.count = str->data - result.data;
+
+    return result;
+}
+
+static bool
+__c_make_load_config(const char *file_name)
+{
+    CMakeString config_string = { 0, 0 };
+
+    if (!c_make_read_entire_file(file_name, &config_string))
+    {
+        c_make_log(CMakeLogLevelError, "could not read config file '%s'\n", file_name);
+        return false;
+    }
+
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+    size_t memory_used = c_make_memory_get_used(temp_memory.memory);
+
+    while (config_string.count)
+    {
+        CMakeString line = c_make_string_split_left(&config_string, '\n');
+        __c_make_string_skip_whitespace(&line);
+        CMakeString key = __c_make_string_parse_identifier(&line);
+        __c_make_string_skip_whitespace(&line);
+
+        if (line.count && (line.data[0] == '='))
+        {
+            line.count -= 1;
+            line.data += 1;
+
+            __c_make_string_skip_whitespace(&line);
+
+            if (line.count && (line.data[0] == '\"'))
+            {
+                line.count -= 1;
+                line.data += 1;
+
+                CMakeString value = line;
+
+                while (line.count && (line.data[0] != '\"'))
+                {
+                    line.count -= 1;
+                    line.data += 1;
+                }
+
+                if (line.count)
+                {
+                    value.count = line.data - value.data;
+                    c_make_memory_set_used(temp_memory.memory, memory_used);
+
+                    c_make_config_set(c_make_string_to_c_string_with_memory(temp_memory.memory, key),
+                                      c_make_string_to_c_string_with_memory(temp_memory.memory, value));
+                }
+            }
+        }
+    }
+
+    c_make_end_temporary_memory(temp_memory);
+
+    return true;
+}
 
 static void
 __c_make_print_help(CMakeInfoArray *commands_info, CMakeInfoArray *configs_info)
@@ -5147,40 +5202,20 @@ __c_make_print_help(CMakeInfoArray *commands_info, CMakeInfoArray *configs_info)
     fprintf(stderr, "want can be stored in there, but there are some options that have special\n");
     fprintf(stderr, "meaning to c_make:\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "    android_aapt_executable       Path to the android aapt executable.\n");
-    fprintf(stderr, "    android_apksigner_executable  Path to the android apksigner executable.\n");
-    fprintf(stderr, "    android_d8_executable         Path to the android d8 executable.\n");
-    fprintf(stderr, "    android_platform_jar          Path to the android platforms 'android.jar'.\n");
-    fprintf(stderr, "    android_zipalign_executable   Path to the android zipalign executable.\n");
-    fprintf(stderr, "    build_type                    Build type. Either 'debug', 'reldebug' or 'release'.\n");
-    fprintf(stderr, "                                  Default: 'debug'\n");
-    fprintf(stderr, "    host_ar                       Path to or name of the host archive/library program.\n");
-    fprintf(stderr, "    host_c_compiler               Path to or name of the host c compiler.\n");
-    fprintf(stderr, "    host_cpp_compiler             Path to or name of the host c++ compiler.\n");
-    fprintf(stderr, "    install_prefix                Install prefix. Defaults to '/usr/local'.\n");
-    fprintf(stderr, "    java_jar_executable           Path to the java jar executable.\n");
-    fprintf(stderr, "    java_jarsigner_executable     Path to the java jarsigner executable.\n");
-    fprintf(stderr, "    java_javac_executable         Path to the java compiler (javac).\n");
-    fprintf(stderr, "    java_keytool_executable       Path to the java keytool executable.\n");
-    fprintf(stderr, "    pkg_config_executable         Path to the pkg-config executable.\n");
-    fprintf(stderr, "    target_architecture           Architecture of the target. Either 'amd64', 'aarch64',\n");
-    fprintf(stderr, "                                  'riscv64', 'wasm32' or 'wasm64'. The default is the\n");
-    fprintf(stderr, "                                  host architecture.\n");
-    fprintf(stderr, "    target_ar                     Path to or name of the target archive/library program.\n");
-    fprintf(stderr, "    target_c_compiler             Path to or name of the target c compiler.\n");
-    fprintf(stderr, "    target_c_flags                Flags for the target c build.\n");
-    fprintf(stderr, "    target_cpp_compiler           Path to or name of the target c++ compiler.\n");
-    fprintf(stderr, "    target_cpp_flags              Flags for the target c++ build.\n");
-    fprintf(stderr, "    target_platform               Platform of the target. Either 'android', 'freebsd',\n");
-    fprintf(stderr, "                                  'windows', 'linux', 'macos' or 'web'. The default is\n");
-    fprintf(stderr, "                                  the host platform.\n");
-    fprintf(stderr, "    visual_studio_root_path       Path to the visual studio install. This should be the directory\n");
-    fprintf(stderr, "                                  in which you find 'VC\\Tools\\MSVC\\<version>'.\n");
-    fprintf(stderr, "    visual_studio_version         The version of the visual studio install.\n");
-    fprintf(stderr, "    windows_rc_executable         Path to the windows resource compiler executable.\n");
-    fprintf(stderr, "    windows_sdk_root_path         Path to the windows sdk. This should be the directory\n");
-    fprintf(stderr, "                                  in which you find 'bin', 'Include' and 'Lib'.\n");
-    fprintf(stderr, "    windows_sdk_version           The version of the windows sdk.\n");
+    for (size_t i = 0; i < CMakeArrayCount(known_configs); i += 1)
+    {
+        const CMakeInfo *info = known_configs + i;
+        CMakeString desc = info->desc;
+        CMakeString line = c_make_string_split_left(&desc, '\n');
+
+        fprintf(stderr, "    %-30.*s%" CMakeStringFmt "\n", CMakeStringArg(info->name), CMakeStringArg(line));
+
+        while (desc.count)
+        {
+            line = c_make_string_split_left(&desc, '\n');
+            fprintf(stderr, "                                  %" CMakeStringFmt "\n", CMakeStringArg(line));
+        }
+    }
     fprintf(stderr, "\n");
 
     if (configs_info->count > 0)
@@ -5745,7 +5780,16 @@ int main(int argument_count, char **arguments)
         CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
 
         CMakeInfoArray commands_info = { 0, 0, 0, temp_memory.memory };
-        CMakeInfoArray configs_info = { 0, 0, 0, temp_memory.memory };
+        CMakeInfoArray configs_info = { 0, 0, 0, &_c_make_context.permanent_memory };
+
+        configs_info.count = CMakeArrayCount(known_configs);
+        configs_info.allocated = configs_info.count;
+        configs_info.items = (CMakeInfo *) c_make_memory_allocate(configs_info.memory, configs_info.allocated * sizeof(*configs_info.items));
+
+        for (size_t i = 0; i < CMakeArrayCount(known_configs); i += 1)
+        {
+            configs_info.items[i] = known_configs[i];
+        }
 
         _c_make_info_(&commands_info, &configs_info);
 
@@ -5760,15 +5804,6 @@ int main(int argument_count, char **arguments)
 
             if (key.count && value.count)
             {
-                for (size_t i = 0; i < CMakeArrayCount(known_config_keys); i += 1)
-                {
-                    if (__c_make_string_levenshtein_distance_is_in_1_to_n(key, known_config_keys[i], 4))
-                    {
-                        c_make_log(CMakeLogLevelWarning, "setting config key '%" CMakeStringFmt "'; did you mean '%" CMakeStringFmt "'\n",
-                                                         CMakeStringArg(key), CMakeStringArg(known_config_keys[i]));
-                    }
-                }
-
                 for (size_t i = 0; i < configs_info.count; i += 1)
                 {
                     if (__c_make_string_levenshtein_distance_is_in_1_to_n(key, configs_info.items[i].name, 4))
@@ -5920,7 +5955,7 @@ int main(int argument_count, char **arguments)
         c_make_log(CMakeLogLevelInfo, "store config:\n");
         c_make_print_config();
 
-        if (!c_make_store_config(config_file_name))
+        if (!__c_make_store_config(config_file_name, &configs_info))
         {
             return 2;
         }
@@ -5946,7 +5981,7 @@ int main(int argument_count, char **arguments)
             return 2;
         }
 
-        if (!c_make_load_config(config_file_name))
+        if (!__c_make_load_config(config_file_name))
         {
             return 2;
         }
@@ -6139,8 +6174,6 @@ int main(int argument_count, char **arguments)
 #    define config_set c_make_config_set
 #    define config_get c_make_config_get
 #    define print_config c_make_print_config
-#    define store_config c_make_store_config
-#    define load_config c_make_load_config
 #    define needs_rebuild c_make_needs_rebuild
 #    define needs_rebuild_single_source c_make_needs_rebuild_single_source
 #    define directory_open c_make_directory_open
