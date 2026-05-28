@@ -5557,45 +5557,45 @@ int main(int argument_count, char **arguments)
 #ifdef __cplusplus
         const char *compiler = c_make_get_host_cpp_compiler();
 
-        CMakeCommand command = { };
+        CMakeCommand cmd = { };
 #else
         const char *compiler = c_make_get_host_c_compiler();
 
-        CMakeCommand command = { 0 };
+        CMakeCommand cmd = { 0 };
 #endif
 
-        c_make_command_append(&command, compiler);
+        c_make_command_append(&cmd, compiler);
 
         if (c_make_compiler_is_msvc(compiler))
         {
-            c_make_command_append_msvc_compiler_flags(&command);
-            c_make_command_append(&command, "-nologo");
+            c_make_command_append_msvc_compiler_flags(&cmd);
+            c_make_command_append(&cmd, "-nologo");
         }
 
 #ifdef C_MAKE_INCLUDE_PATH
-        c_make_command_append(&command, "-I" CMakeStr(C_MAKE_INCLUDE_PATH));
-        c_make_command_append(&command, "-DC_MAKE_INCLUDE_PATH=" CMakeStr(C_MAKE_INCLUDE_PATH));
+        c_make_command_append(&cmd, "-I" CMakeStr(C_MAKE_INCLUDE_PATH));
+        c_make_command_append(&cmd, "-DC_MAKE_INCLUDE_PATH=" CMakeStr(C_MAKE_INCLUDE_PATH));
 #endif
 #ifdef C_MAKE_COMPILER_FLAGS
-        c_make_command_append_command_line(&command, CMakeStr(C_MAKE_COMPILER_FLAGS));
-        c_make_command_append(&command, "-DC_MAKE_COMPILER_FLAGS=" CMakeStr(C_MAKE_COMPILER_FLAGS));
+        c_make_command_append_command_line(&cmd, CMakeStr(C_MAKE_COMPILER_FLAGS));
+        c_make_command_append(&cmd, "-DC_MAKE_COMPILER_FLAGS=" CMakeStr(C_MAKE_COMPILER_FLAGS));
 #endif
-        c_make_command_append_output_executable(&command, "c_make", c_make_get_host_platform());
-        c_make_command_append(&command, c_make_source_file);
-        c_make_command_append_default_linker_flags(&command, c_make_get_host_architecture());
+        c_make_command_append_output_executable(&cmd, "c_make", c_make_get_host_platform());
+        c_make_command_append(&cmd, c_make_source_file);
+        c_make_command_append_default_linker_flags(&cmd, c_make_get_host_architecture());
 
         c_make_log(CMakeLogLevelInfo, "rebuild c_make\n");
 
-        if (!c_make_command_run_and_wait(command))
+        if (!c_make_command_run_and_wait(cmd))
         {
             c_make_rename_file(c_make_temp_file, c_make_executable_file);
         }
         else
         {
-            command.count = 0;
-            c_make_command_append(&command, c_make_executable_file);
-            c_make_command_append_slice(&command, argument_count - 1, (const char **) (arguments + 1));
-            c_make_command_run_and_wait(command);
+            cmd.count = 0;
+            c_make_command_append(&cmd, c_make_executable_file);
+            c_make_command_append_slice(&cmd, argument_count - 1, (const char **) (arguments + 1));
+            c_make_command_run_and_wait(cmd);
         }
 
         c_make_memory_set_used(&_c_make_context.public_memory, public_used);
@@ -5783,7 +5783,7 @@ int main(int argument_count, char **arguments)
         }
 #endif
 
-        CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+        temp_memory = c_make_begin_temporary_memory(0, 0);
 
         CMakeInfoArray commands_info = { 0, 0, 0, temp_memory.memory };
         CMakeInfoArray configs_info = { 0, 0, 0, &_c_make_context.permanent_memory };

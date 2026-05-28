@@ -17,30 +17,30 @@ C_MAKE_ENTRY(command, argument_count, arguments)
 
     if (strings_are_equal(command, COMMAND_BUILD))
     {
-        Command command = { 0 };
+        Command cmd = { 0 };
 
         const char *target_c_compiler = get_target_c_compiler();
 
-        command_append(&command, target_c_compiler);
-        command_append_command_line(&command, get_target_c_flags());
-        command_append_default_compiler_flags(&command, get_build_type());
+        command_append(&cmd, target_c_compiler);
+        command_append_command_line(&cmd, get_target_c_flags());
+        command_append_default_compiler_flags(&cmd, get_build_type());
 
         if (!compiler_is_msvc(target_c_compiler))
         {
-            command_append(&command, "-std=c99", "-Wall", "-Wextra", "-pedantic");
+            command_append(&cmd, "-std=c99", "-Wall", "-Wextra", "-pedantic");
         }
 
-        command_append_output_executable(&command, c_string_path_concat(get_build_path(), "c_make"), get_target_platform());
-        command_append(&command, c_string_path_concat(get_source_path(), "c_make_wrapper.c"));
-        command_append_default_linker_flags(&command, get_target_architecture());
+        command_append_output_executable(&cmd, c_string_path_concat(get_build_path(), "c_make"), get_target_platform());
+        command_append(&cmd, c_string_path_concat(get_source_path(), "c_make_wrapper.c"));
+        command_append_default_linker_flags(&cmd, get_target_architecture());
 
         if ((get_target_platform() == PlatformWindows) && !compiler_is_msvc(target_c_compiler))
         {
-            command_append(&command, "-lole32", "-loleaut32", "-ladvapi32");
+            command_append(&cmd, "-lole32", "-loleaut32", "-ladvapi32");
         }
 
         c_make_log(LogLevelInfo, "compile 'c_make_wrapper'\n");
-        command_run(command);
+        command_run(cmd);
     }
     else if (strings_are_equal(command, StringLiteral("check-readme")))
     {
@@ -75,31 +75,31 @@ C_MAKE_ENTRY(command, argument_count, arguments)
 
             write_entire_file(c_string_path_concat(get_build_path(), c_string_formated("readme%zu.c", code_index)), code);
 
-            Command command = { 0 };
+            Command cmd = { 0 };
 
             const char *target_c_compiler = get_target_c_compiler();
 
-            command_append(&command, target_c_compiler);
-            command_append_command_line(&command, get_target_c_flags());
-            command_append_default_compiler_flags(&command, get_build_type());
-            command_append(&command, c_string_concat("-I", get_source_path()));
+            command_append(&cmd, target_c_compiler);
+            command_append_command_line(&cmd, get_target_c_flags());
+            command_append_default_compiler_flags(&cmd, get_build_type());
+            command_append(&cmd, c_string_concat("-I", get_source_path()));
 
             if (!compiler_is_msvc(target_c_compiler))
             {
-                command_append(&command, "-std=c99", "-Wall", "-Wextra", "-pedantic");
+                command_append(&cmd, "-std=c99", "-Wall", "-Wextra", "-pedantic");
             }
 
-            command_append_output_executable(&command, c_string_path_concat(get_build_path(), c_string_formated("readme%zu", code_index)), get_target_platform());
-            command_append(&command, c_string_path_concat(get_build_path(), c_string_formated("readme%zu.c", code_index)));
-            command_append_default_linker_flags(&command, get_target_architecture());
+            command_append_output_executable(&cmd, c_string_path_concat(get_build_path(), c_string_formated("readme%zu", code_index)), get_target_platform());
+            command_append(&cmd, c_string_path_concat(get_build_path(), c_string_formated("readme%zu.c", code_index)));
+            command_append_default_linker_flags(&cmd, get_target_architecture());
 
             if ((get_target_platform() == PlatformWindows) && !compiler_is_msvc(target_c_compiler))
             {
-                command_append(&command, "-lole32", "-loleaut32", "-ladvapi32");
+                command_append(&cmd, "-lole32", "-loleaut32", "-ladvapi32");
             }
 
             c_make_log(LogLevelInfo, "compile 'readme%zu'\n", code_index);
-            command_run_and_reset_and_wait(&command);
+            command_run_and_reset_and_wait(&cmd);
 
             code_index += 1;
             index = string_find(readme, code_start);
