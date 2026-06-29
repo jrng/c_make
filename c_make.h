@@ -3663,7 +3663,7 @@ c_make_create_directory_recursively(const char *directory_name)
 #elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_FREEBSD || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
     struct stat stats;
 
-    if (stat(directory_name, &stats) || S_ISDIR(stats.st_mode))
+    if (stat(directory_name, &stats) || !S_ISDIR(stats.st_mode))
     {
         CMakeString parent_string = CMakeCString(directory_name);
         c_make_string_split_right_path_separator(&parent_string);
