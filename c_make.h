@@ -2885,7 +2885,7 @@ C_MAKE_DEF const char *
 c_make_get_android_apksigner(void)
 {
 #if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
-    return c_make_get_executable("android_apksigner_executable", "apksigner.exe");
+    return c_make_get_executable("android_apksigner_executable", "apksigner.bat");
 #else
     return c_make_get_executable("android_apksigner_executable", "apksigner");
 #endif
@@ -2945,7 +2945,7 @@ c_make_setup_android(bool logging)
 
 #if C_MAKE_PLATFORM_WINDOWS && !defined(__MINGW32__)
     const char *android_aapt_executable_name      = "aapt.exe";
-    const char *android_apksigner_executable_name = "apksigner.exe";
+    const char *android_apksigner_executable_name = "apksigner.bat";
     const char *android_d8_executable_name        = "d8.exe";
     const char *android_zipalign_executable_name  = "zipalign.exe";
 #else
