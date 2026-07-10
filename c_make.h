@@ -3042,6 +3042,21 @@ c_make_setup_java(bool logging)
 
     if (!java_root_path)
     {
+        CMakeString JAVA_HOME_25_X64 = c_make_get_environment_variable(&_c_make_context.public_memory, "JAVA_HOME_25_X64");
+
+        if (JAVA_HOME_25_X64.count)
+        {
+            const char *java_home_25_x64 = c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, JAVA_HOME_25_X64);
+
+            if (java_home_25_x64)
+            {
+                java_root_path = java_home_25_x64;
+            }
+        }
+    }
+
+    if (!java_root_path)
+    {
         CMakeString JAVA_HOME_21_X64 = c_make_get_environment_variable(&_c_make_context.public_memory, "JAVA_HOME_21_X64");
 
         if (JAVA_HOME_21_X64.count)
