@@ -906,6 +906,8 @@ c_make_log(CMakeLogLevel log_level, const char *format, ...)
     if (!_c_make_context.shell_initialized)
     {
 #if C_MAKE_PLATFORM_WINDOWS
+        SetConsoleOutputCP(CP_UTF8);
+
         HANDLE std_error = GetStdHandle(STD_ERROR_HANDLE);
         DWORD mode = 0;
 
