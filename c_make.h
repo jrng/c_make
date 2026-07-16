@@ -137,6 +137,8 @@
 #  define NOMINMAX
 #  include <windows.h>
 
+#  define CMakeNewLine "\r\n"
+
 typedef HANDLE CMakeProcessId;
 
 #  define CMakeInvalidProcessId INVALID_HANDLE_VALUE
@@ -145,6 +147,8 @@ typedef HANDLE CMakeProcessId;
 
 #  include <dirent.h>
 #  include <sys/wait.h>
+
+#  define CMakeNewLine "\n"
 
 typedef pid_t CMakeProcessId;
 
@@ -6104,6 +6108,7 @@ int main(int argument_count, char **arguments)
 #    define c_string_path_concat_with_memory c_make_c_string_path_concat_with_memory
 #    define command_append c_make_command_append
 #    define command_run_output c_make_command_run_output
+#    define NewLine CMakeNewLine
 #    define ProcessId CMakeProcessId
 #    define InvalidProcessId CMakeInvalidProcessId
 #    define LogLevel CMakeLogLevel
