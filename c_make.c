@@ -12,9 +12,6 @@ C_MAKE_INFO(commands_info, configs_info)
 
 C_MAKE_ENTRY(command, argument_count, arguments)
 {
-    (void) argument_count;
-    (void) arguments;
-
     if (strings_are_equal(command, COMMAND_BUILD))
     {
         Command cmd = { 0 };
