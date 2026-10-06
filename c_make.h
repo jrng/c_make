@@ -1,6 +1,31 @@
 // c_make.h - MIT License
 // See end of file for full license
 
+/* To get started put this into a c_make.c(pp) file
+   in your project's root directory:
+
+#define C_MAKE_IMPLEMENTATION
+#include "c_make.h"
+
+C_MAKE_INFO(commands_info, configs_info)
+{
+    add_default_info(commands_info, configs_info);
+}
+
+C_MAKE_ENTRY(command, argument_count, arguments)
+{
+    if (strings_are_equal(command, COMMAND_BUILD))
+    {
+        // build commands
+    }
+    else
+    {
+        handle_default_commands(command, argument_count, arguments);
+    }
+}
+
+*/
+
 // TODO:
 // - documentation
 // - improve c_make_command_to_string()
