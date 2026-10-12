@@ -1818,20 +1818,19 @@ c_make_string_trim_characters(CMakeString str, CMakeString chars)
 C_MAKE_DEF size_t
 c_make_string_find(CMakeString str, CMakeString pattern)
 {
-    size_t index = 0;
-
-    for (; index < str.count; index += 1)
+    if (pattern.count > str.count)
     {
-        CMakeString slice;
-        slice.count = pattern.count;
-        slice.data  = str.data + index;
+        return str.count;
+    }
 
-        size_t max_count = str.count - index;
+    size_t count = str.count - pattern.count;
 
-        if (slice.count > max_count)
-        {
-            slice.count = max_count;
-        }
+    CMakeString slice;
+    slice.count = pattern.count;
+
+    for (size_t index = 0; index < count; index += 1)
+    {
+        slice.data = str.data + index;
 
         if (c_make_strings_are_equal(slice, pattern))
         {
@@ -1839,7 +1838,7 @@ c_make_string_find(CMakeString str, CMakeString pattern)
         }
     }
 
-    return index;
+    return str.count;
 }
 
 C_MAKE_DEF CMakeString
