@@ -136,6 +136,8 @@ C_MAKE_ENTRY(command, argument_count, arguments)
 #define c_make_string_replace_all(str, pattern, replace) c_make_string_replace_all_with_memory(&_c_make_context.public_memory, str, pattern, replace)
 #define c_make_string_to_c_string(str) c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, str)
 
+#define c_make_find_program(program_name) c_make_find_program_with_memory(&_c_make_context.public_memory, program_name)
+
 #define c_make_string_concat(...) c_make_string_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 #define c_make_string_path_concat(...) c_make_string_path_concat_va(&_c_make_context.public_memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
 #define c_make_string_concat_with_memory(memory, ...) c_make_string_concat_va(memory, CMakeNArgs(__VA_ARGS__), __VA_ARGS__)
@@ -628,7 +630,7 @@ C_MAKE_DEF bool c_make_delete_directory_recursively(const char *directory_name);
 
 C_MAKE_DEF bool c_make_has_slash_or_backslash(const char *path);
 C_MAKE_DEF CMakeString c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name);
-C_MAKE_DEF const char *c_make_find_program(const char *program_name);
+C_MAKE_DEF const char *c_make_find_program_with_memory(CMakeMemory *memory, const char *program_name);
 C_MAKE_DEF const char *c_make_get_executable(const char *config_name, const char *fallback_executable);
 
 C_MAKE_DEF CMakeString c_make_string_concat_va(CMakeMemory *memory, size_t count, ...);
@@ -4199,13 +4201,13 @@ c_make_get_environment_variable(CMakeMemory *memory, const char *variable_name)
 }
 
 C_MAKE_DEF const char *
-c_make_find_program(const char *program_name)
+c_make_find_program_with_memory(CMakeMemory *memory, const char *program_name)
 {
-    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(0, 0);
+    CMakeTemporaryMemory temp_memory = c_make_begin_temporary_memory(1, &memory);
     CMakeString paths = c_make_get_environment_variable(temp_memory.memory, "PATH");
 
-    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-    size_t memory_used = c_make_memory_get_used(temp_memory.memory);
+    size_t memory_used = c_make_memory_get_used(memory);
+    size_t temp_memory_used = c_make_memory_get_used(temp_memory.memory);
 
     while (paths.count)
     {
@@ -4215,9 +4217,9 @@ c_make_find_program(const char *program_name)
         char *path = c_make_string_to_c_string_with_memory(temp_memory.memory, c_make_string_split_left(&paths, ':'));
 #endif
 
-        char *full_path = c_make_c_string_path_concat(path, program_name);
+        char *full_path = c_make_c_string_path_concat_with_memory(memory, path, program_name);
 
-        c_make_memory_set_used(temp_memory.memory, memory_used);
+        c_make_memory_set_used(temp_memory.memory, temp_memory_used);
 
         // TODO: is executable?
         if (c_make_file_exists(full_path))
@@ -4226,7 +4228,7 @@ c_make_find_program(const char *program_name)
             return full_path;
         }
 
-        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        c_make_memory_set_used(memory, memory_used);
     }
 
     c_make_end_temporary_memory(temp_memory);
@@ -5649,11 +5651,11 @@ int main(int argument_count, char **arguments)
     }
     else
     {
-        size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+        temp_memory = c_make_begin_temporary_memory(0, 0);
 
-        c_make_delete_file(c_make_c_string_concat(c_make_executable_file, ".orig"));
+        c_make_delete_file(c_make_c_string_concat_with_memory(temp_memory.memory, c_make_executable_file, ".orig"));
 
-        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        c_make_end_temporary_memory(temp_memory);
     }
 
     _c_make_context.target_platform = c_make_get_host_platform();
@@ -5676,151 +5678,127 @@ int main(int argument_count, char **arguments)
         // TODO: set to something different for windows
         c_make_config_set_if_not_exists("install_prefix", "/usr/local");
 
-        size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+        temp_memory = c_make_begin_temporary_memory(0, 0);
 
 #if C_MAKE_PLATFORM_WINDOWS
+        CMakeString VCToolsVersion = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "VCToolsVersion"));
+        CMakeString VCToolsInstallDir = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "VCToolsInstallDir"));
+
+        if (VCToolsVersion.count && VCToolsInstallDir.count)
         {
-            CMakeString VCToolsVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsVersion"));
-            CMakeString VCToolsInstallDir = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "VCToolsInstallDir"));
-
-            if (VCToolsVersion.count && VCToolsInstallDir.count)
+            while (VCToolsInstallDir.count)
             {
-                while (VCToolsInstallDir.count)
+                CMakeString directory = c_make_string_split_right_path_separator(&VCToolsInstallDir);
+
+                if (c_make_strings_are_equal(directory, CMakeStringLiteral("VC")))
                 {
-                    CMakeString directory = c_make_string_split_right_path_separator(&VCToolsInstallDir);
-
-                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("VC")))
-                    {
-                        break;
-                    }
+                    break;
                 }
-
-                c_make_config_set("visual_studio_version", c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, VCToolsVersion));
-                c_make_config_set("visual_studio_root_path", c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, VCToolsInstallDir));
             }
 
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+            c_make_config_set("visual_studio_version", c_make_string_to_c_string_with_memory(temp_memory.memory, VCToolsVersion));
+            c_make_config_set("visual_studio_root_path", c_make_string_to_c_string_with_memory(temp_memory.memory, VCToolsInstallDir));
         }
 
+        CMakeString WindowsSDKVersion = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "WindowsSDKVersion"));
+        CMakeString WindowsSdkBinPath = c_make_string_trim(c_make_get_environment_variable(temp_memory.memory, "WindowsSdkBinPath"));
+
+        if (WindowsSDKVersion.count && (WindowsSDKVersion.data[WindowsSDKVersion.count - 1] == '\\'))
         {
-            CMakeString WindowsSDKVersion = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSDKVersion"));
-            CMakeString WindowsSdkBinPath = c_make_string_trim(c_make_get_environment_variable(&_c_make_context.public_memory, "WindowsSdkBinPath"));
+            WindowsSDKVersion.count -= 1;
+        }
 
-            if (WindowsSDKVersion.count && (WindowsSDKVersion.data[WindowsSDKVersion.count - 1] == '\\'))
+        if (WindowsSDKVersion.count && WindowsSdkBinPath.count)
+        {
+            while (WindowsSdkBinPath.count)
             {
-                WindowsSDKVersion.count -= 1;
-            }
+                CMakeString directory = c_make_string_split_right_path_separator(&WindowsSdkBinPath);
 
-            if (WindowsSDKVersion.count && WindowsSdkBinPath.count)
-            {
-                while (WindowsSdkBinPath.count)
+                if (c_make_strings_are_equal(directory, CMakeStringLiteral("bin")))
                 {
-                    CMakeString directory = c_make_string_split_right_path_separator(&WindowsSdkBinPath);
-
-                    if (c_make_strings_are_equal(directory, CMakeStringLiteral("bin")))
-                    {
-                        break;
-                    }
+                    break;
                 }
-
-                c_make_config_set("windows_sdk_version", c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, WindowsSDKVersion));
-                c_make_config_set("windows_sdk_root_path", c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, WindowsSdkBinPath));
             }
 
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+            c_make_config_set("windows_sdk_version", c_make_string_to_c_string_with_memory(temp_memory.memory, WindowsSDKVersion));
+            c_make_config_set("windows_sdk_root_path", c_make_string_to_c_string_with_memory(temp_memory.memory, WindowsSdkBinPath));
         }
 #endif
 
+        CMakeString ARCH = c_make_get_environment_variable(temp_memory.memory, "ARCH");
+
+        if (c_make_strings_are_equal(ARCH, CMakeStringLiteral("arm64")))
         {
-            CMakeString ARCH = c_make_get_environment_variable(&_c_make_context.public_memory, "ARCH");
-
-            if (c_make_strings_are_equal(ARCH, CMakeStringLiteral("arm64")))
-            {
-                c_make_config_set("target_architecture", "aarch64");
-            }
-
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+            c_make_config_set("target_architecture", "aarch64");
         }
 
+        CMakeString AR = c_make_get_environment_variable(temp_memory.memory, "AR");
+
+        if (AR.count)
         {
-            CMakeString AR = c_make_get_environment_variable(&_c_make_context.public_memory, "AR");
+            const char *target_ar = c_make_string_to_c_string_with_memory(temp_memory.memory, AR);
 
-            if (AR.count)
+            if (!c_make_has_slash_or_backslash(target_ar))
             {
-                const char *target_ar = c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, AR);
-
-                if (!c_make_has_slash_or_backslash(target_ar))
-                {
-                    target_ar = c_make_find_program(target_ar);
-                }
-
-                if (target_ar)
-                {
-                    c_make_config_set("target_ar", target_ar);
-                }
+                target_ar = c_make_find_program_with_memory(temp_memory.memory, target_ar);
             }
 
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+            if (target_ar)
+            {
+                c_make_config_set("target_ar", target_ar);
+            }
         }
 
+        CMakeString CC = c_make_get_environment_variable(temp_memory.memory, "CC");
+
+        if (CC.count)
         {
-            CMakeString CC = c_make_get_environment_variable(&_c_make_context.public_memory, "CC");
+            const char *target_c_compiler = c_make_string_to_c_string_with_memory(temp_memory.memory, c_make_string_split_left(&CC, ' '));
+
+            if (!c_make_has_slash_or_backslash(target_c_compiler))
+            {
+                target_c_compiler = c_make_find_program_with_memory(temp_memory.memory, target_c_compiler);
+            }
+
+            if (target_c_compiler)
+            {
+                c_make_config_set("target_c_compiler", target_c_compiler);
+            }
+
+            CC = c_make_string_trim(CC);
 
             if (CC.count)
             {
-                const char *target_c_compiler = c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, c_make_string_split_left(&CC, ' '));
-
-                if (!c_make_has_slash_or_backslash(target_c_compiler))
-                {
-                    target_c_compiler = c_make_find_program(target_c_compiler);
-                }
-
-                if (target_c_compiler)
-                {
-                    c_make_config_set("target_c_compiler", target_c_compiler);
-                }
-
-                CC = c_make_string_trim(CC);
-
-                if (CC.count)
-                {
-                    c_make_config_set("target_c_flags", c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, CC));
-                }
+                c_make_config_set("target_c_flags", c_make_string_to_c_string_with_memory(temp_memory.memory, CC));
             }
-
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
         }
 
+        CMakeString CXX = c_make_get_environment_variable(temp_memory.memory, "CXX");
+
+        if (CXX.count)
         {
-            CMakeString CXX = c_make_get_environment_variable(&_c_make_context.public_memory, "CXX");
+            const char *target_cpp_compiler = c_make_string_to_c_string_with_memory(temp_memory.memory, c_make_string_split_left(&CXX, ' '));
+
+            if (!c_make_has_slash_or_backslash(target_cpp_compiler))
+            {
+                target_cpp_compiler = c_make_find_program_with_memory(temp_memory.memory, target_cpp_compiler);
+            }
+
+            if (target_cpp_compiler)
+            {
+                c_make_config_set("target_cpp_compiler", target_cpp_compiler);
+            }
+
+            CXX = c_make_string_trim(CXX);
 
             if (CXX.count)
             {
-                const char *target_cpp_compiler = c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, c_make_string_split_left(&CXX, ' '));
-
-                if (!c_make_has_slash_or_backslash(target_cpp_compiler))
-                {
-                    target_cpp_compiler = c_make_find_program(target_cpp_compiler);
-                }
-
-                if (target_cpp_compiler)
-                {
-                    c_make_config_set("target_cpp_compiler", target_cpp_compiler);
-                }
-
-                CXX = c_make_string_trim(CXX);
-
-                if (CXX.count)
-                {
-                    c_make_config_set("target_cpp_flags", c_make_string_to_c_string_with_memory(&_c_make_context.public_memory, CXX));
-                }
+                c_make_config_set("target_cpp_flags", c_make_string_to_c_string_with_memory(temp_memory.memory, CXX));
             }
-
-            c_make_memory_set_used(&_c_make_context.public_memory, public_used);
         }
 
 #if C_MAKE_PLATFORM_LINUX
-        const char *pkg_config_executable = c_make_find_program("pkg-config");
+        const char *pkg_config_executable = c_make_find_program_with_memory(temp_memory.memory, "pkg-config");
 
         if (pkg_config_executable)
         {
@@ -5828,6 +5806,7 @@ int main(int argument_count, char **arguments)
         }
 #endif
 
+        c_make_end_temporary_memory(temp_memory);
         temp_memory = c_make_begin_temporary_memory(0, 0);
 
         CMakeInfoArray commands_info = { 0, 0, 0, temp_memory.memory };
@@ -6027,12 +6006,12 @@ int main(int argument_count, char **arguments)
             return 2;
         }
 
-        public_used = c_make_memory_get_used(&_c_make_context.public_memory);
+        temp_memory = c_make_begin_temporary_memory(0, 0);
 
-        const char *gitignore_file_name = c_make_c_string_path_concat(build_directory, ".gitignore");
+        const char *gitignore_file_name = c_make_c_string_path_concat_with_memory(temp_memory.memory, build_directory, ".gitignore");
         c_make_write_entire_file(gitignore_file_name, CMakeStringLiteral("# This file was auto-generated by c_make\n*\n"));
 
-        c_make_memory_set_used(&_c_make_context.public_memory, public_used);
+        c_make_end_temporary_memory(temp_memory);
     }
     else
     {
@@ -6262,6 +6241,7 @@ int main(int argument_count, char **arguments)
 #    define has_slash_or_backslash c_make_has_slash_or_backslash
 #    define get_environment_variable c_make_get_environment_variable
 #    define find_program c_make_find_program
+#    define find_program_with_memory c_make_find_program_with_memory
 #    define get_executable c_make_get_executable
 #    define command_run c_make_command_run
 #    define command_run_and_reset c_make_command_run_and_reset
