@@ -5878,6 +5878,7 @@ int main(int argument_count, char **arguments)
         }
 
         c_make_end_temporary_memory(temp_memory);
+        temp_memory = c_make_begin_temporary_memory(0, 0);
 
         if (c_make_get_host_platform() != c_make_get_target_platform())
         {
@@ -5887,48 +5888,36 @@ int main(int argument_count, char **arguments)
 
                 if (!target_ar.is_valid)
                 {
-                    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-
-                    const char *ar = c_make_find_program("x86_64-w64-mingw32-ar");
+                    const char *ar = c_make_find_program_with_memory(temp_memory.memory, "x86_64-w64-mingw32-ar");
 
                     if (ar)
                     {
                         c_make_config_set("target_ar", ar);
                     }
-
-                    c_make_memory_set_used(&_c_make_context.public_memory, public_used);
                 }
 
                 CMakeConfigValue target_c_compiler = c_make_config_get("target_c_compiler");
 
                 if (!target_c_compiler.is_valid)
                 {
-                    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-
-                    const char *c_compiler = c_make_find_program("x86_64-w64-mingw32-gcc");
+                    const char *c_compiler = c_make_find_program_with_memory(temp_memory.memory, "x86_64-w64-mingw32-gcc");
 
                     if (c_compiler)
                     {
                         c_make_config_set("target_c_compiler", c_compiler);
                     }
-
-                    c_make_memory_set_used(&_c_make_context.public_memory, public_used);
                 }
 
                 CMakeConfigValue target_cpp_compiler = c_make_config_get("target_cpp_compiler");
 
                 if (!target_cpp_compiler.is_valid)
                 {
-                    size_t public_used = c_make_memory_get_used(&_c_make_context.public_memory);
-
-                    const char *cpp_compiler = c_make_find_program("x86_64-w64-mingw32-g++");
+                    const char *cpp_compiler = c_make_find_program_with_memory(temp_memory.memory, "x86_64-w64-mingw32-g++");
 
                     if (cpp_compiler)
                     {
                         c_make_config_set("target_cpp_compiler", cpp_compiler);
                     }
-
-                    c_make_memory_set_used(&_c_make_context.public_memory, public_used);
                 }
             }
             else if (c_make_get_target_platform() == CMakePlatformAndroid)
@@ -5986,13 +5975,15 @@ int main(int argument_count, char **arguments)
         {
 #  if C_MAKE_ARCHITECTURE_AMD64
             c_make_config_set("windows_rc_executable",
-                              c_make_c_string_path_concat(windows_sdk.root_path, "bin", windows_sdk.version, "x64", "rc.exe"));
+                              c_make_c_string_path_concat_with_memory(temp_memory.memory, windows_sdk.root_path, "bin", windows_sdk.version, "x64", "rc.exe"));
 #  elif C_MAKE_ARCHITECTURE_AARCH64
             c_make_config_set("windows_rc_executable",
-                              c_make_c_string_path_concat(windows_sdk.root_path, "bin", windows_sdk.version, "arm64", "rc.exe"));
+                              c_make_c_string_path_concat_with_memory(temp_memory.memory, windows_sdk.root_path, "bin", windows_sdk.version, "arm64", "rc.exe"));
 #  endif
         }
 #endif
+
+        c_make_end_temporary_memory(temp_memory);
 
         _c_make_entry_(command, 0, 0);
 
