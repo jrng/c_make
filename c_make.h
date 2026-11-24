@@ -200,6 +200,16 @@ extern "C" {
 #define C_MAKE_COMMAND_SETUP CMakeStringLiteral("setup")
 #define C_MAKE_COMMAND_BUILD CMakeStringLiteral("build")
 
+typedef enum CMakeProgramState
+{
+    CMakeProgramStateIdle    = 0,
+    CMakeProgramStateWorking = 1,
+    CMakeProgramStateDone    = 2,
+    CMakeProgramStateBlocked = 3,
+    CMakeProgramStateError   = 4,
+    CMakeProgramStateClear   = 5,
+} CMakeProgramState;
+
 typedef enum CMakeLogLevel
 {
     CMakeLogLevelRaw     = 0,
@@ -510,6 +520,7 @@ c_make_get_architecture_name(CMakeArchitecture architecture)
 
 C_MAKE_DEF void c_make_set_failed(bool failed);
 C_MAKE_DEF bool c_make_get_failed(void);
+C_MAKE_DEF void c_make_set_program_status(CMakeProgramState state);
 C_MAKE_DEF void c_make_log(CMakeLogLevel log_level, const char *format, ...) CMakePrintfFormat(2, 3);
 
 C_MAKE_DEF CMakeString c_make_string_formated_with_memory(CMakeMemory *memory, const char *format, ...) CMakePrintfFormat(2, 3);
@@ -929,6 +940,33 @@ C_MAKE_DEF bool
 c_make_get_failed(void)
 {
     return _c_make_context.did_fail;
+}
+
+C_MAKE_DEF void
+c_make_set_program_status(CMakeProgramState state)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    (void) state;
+#else
+#  if C_MAKE_PLATFORM_LINUX
+    int fileno(FILE *);
+#  endif
+
+    if (isatty(fileno(stderr)))
+    {
+        switch (state)
+        {
+            case CMakeProgramStateIdle:    fprintf(stderr, "\x1b]7501;state=idle:app=c_make\x1b\\");    break;
+            case CMakeProgramStateWorking: fprintf(stderr, "\x1b]7501;state=working:app=c_make\x1b\\"); break;
+            case CMakeProgramStateDone:    fprintf(stderr, "\x1b]7501;state=done:app=c_make\x1b\\");    break;
+            case CMakeProgramStateBlocked: fprintf(stderr, "\x1b]7501;state=blocked:kind=question:app=c_make\x1b\\"); break;
+            case CMakeProgramStateError:   fprintf(stderr, "\x1b]7501;state=error:app=c_make\x1b\\");   break;
+            case CMakeProgramStateClear:   fprintf(stderr, "\x1b]7501;state=clear:app=c_make\x1b\\");   break;
+        }
+
+        fflush(stderr);
+    }
+#endif
 }
 
 C_MAKE_DEF void
@@ -5678,6 +5716,8 @@ int main(int argument_count, char **arguments)
         // TODO: set to something different for windows
         c_make_config_set_if_not_exists("install_prefix", "/usr/local");
 
+        c_make_set_program_status(CMakeProgramStateWorking);
+
         temp_memory = c_make_begin_temporary_memory(0, 0);
 
 #if C_MAKE_PLATFORM_WINDOWS
@@ -6037,12 +6077,23 @@ int main(int argument_count, char **arguments)
             command_arguments[i - 3] = CMakeCString(arguments[i]);
         }
 
+        c_make_set_program_status(CMakeProgramStateWorking);
+
         _c_make_entry_(command, command_argument_count, command_arguments);
 
         c_make_process_wait_for_all();
     }
 
-    return _c_make_context.did_fail ? 1 : 0;
+    if (_c_make_context.did_fail)
+    {
+        c_make_set_program_status(CMakeProgramStateError);
+        return 1;
+    }
+    else
+    {
+        c_make_set_program_status(CMakeProgramStateDone);
+        return 0;
+    }
 }
 
 #endif // !defined(C_MAKE_NO_ENTRY_POINT)
@@ -6086,6 +6137,7 @@ int main(int argument_count, char **arguments)
 #    define AndroidSdk CMakeAndroidSdk
 #    define StringLiteral CMakeStringLiteral
 #    define CString CMakeCString
+#    define set_program_status c_make_set_program_status
 #    define string_formated c_make_string_formated
 #    define string_formated_with_memory c_make_string_formated_with_memory
 #    define c_string_formated c_make_c_string_formated
@@ -6105,6 +6157,13 @@ int main(int argument_count, char **arguments)
 #    define NewLine CMakeNewLine
 #    define ProcessId CMakeProcessId
 #    define InvalidProcessId CMakeInvalidProcessId
+#    define ProgramState CMakeProgramState
+#    define ProgramStateIdle CMakeProgramStateIdle
+#    define ProgramStateWorking CMakeProgramStateWorking
+#    define ProgramStateDone CMakeProgramStateDone
+#    define ProgramStateBlocked CMakeProgramStateBlocked
+#    define ProgramStateError CMakeProgramStateError
+#    define ProgramStateClear CMakeProgramStateClear
 #    define LogLevel CMakeLogLevel
 #    define LogLevelRaw CMakeLogLevelRaw
 #    define LogLevelInfo CMakeLogLevelInfo

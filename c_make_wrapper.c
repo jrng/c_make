@@ -50,6 +50,8 @@ int main(int argument_count, char **arguments)
                     break;
                 }
 
+                c_make_set_program_status(CMakeProgramStateWorking);
+
                 command_append(&command, compiler);
 
                 if (compiler_is_msvc(compiler))
@@ -135,6 +137,7 @@ int main(int argument_count, char **arguments)
                 }
                 else
                 {
+                    c_make_set_program_status(CMakeProgramStateBlocked);
                     c_make_log(LogLevelError, "bootstrapping did not work. Maybe try setting the c_make include path.\n"
                                               "          C_MAKE_INCLUDE_PATH = ");
 
@@ -174,5 +177,14 @@ int main(int argument_count, char **arguments)
         command_run_and_wait(command);
     }
 
-    return _c_make_context.did_fail ? 1 : 0;
+    if (_c_make_context.did_fail)
+    {
+        c_make_set_program_status(CMakeProgramStateError);
+        return 1;
+    }
+    else
+    {
+        c_make_set_program_status(CMakeProgramStateDone);
+        return 0;
+    }
 }
