@@ -131,7 +131,7 @@ int main(int argument_count, char **arguments)
 
                 c_make_log(LogLevelInfo, "bootstrap c_make from %s\n", c_make_source_file);
 
-                if (command_run_and_wait(command))
+                if (process_wait(command_run(&command, .no_reset = false)))
                 {
                     break;
                 }
@@ -170,11 +170,9 @@ int main(int argument_count, char **arguments)
 
     if (file_exists(c_make_executable_file))
     {
-        command.count = 0;
-
         command_append(&command, c_string_path_concat(".", c_make_executable_file));
         command_append_slice(&command, argument_count - 1, (const char **) (arguments + 1));
-        command_run_and_wait(command);
+        process_wait(command_run(&command, .no_reset = false));
     }
 
     if (_c_make_context.did_fail)

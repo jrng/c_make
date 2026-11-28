@@ -37,7 +37,7 @@ C_MAKE_ENTRY(command, argument_count, arguments)
         }
 
         c_make_log(LogLevelInfo, "compile 'c_make_wrapper'\n");
-        command_run(cmd);
+        command_run(&cmd, .no_reset = false);
     }
     else if (strings_are_equal(command, StringLiteral("check-readme")))
     {
@@ -96,7 +96,7 @@ C_MAKE_ENTRY(command, argument_count, arguments)
             }
 
             c_make_log(LogLevelInfo, "compile 'readme%zu'\n", code_index);
-            command_run_and_reset_and_wait(&cmd);
+            process_wait(command_run(&cmd, .no_reset = false));
 
             code_index += 1;
             index = string_find(readme, code_start);
